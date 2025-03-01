@@ -4,16 +4,6 @@ import { Semaphore } from "./semaphore";
 export const inMemoryDistributedSemaphoreStore = new Map<string, Semaphore>();
 
 export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
-  private static _instance: InMemoryDistributedSemaphore;
-
-  public static create(props: DistributedSemaphoreConstructorProps): InMemoryDistributedSemaphore {
-    if (!this._instance) {
-      this._instance = new InMemoryDistributedSemaphore(props);
-    }
-
-    return this._instance;
-  }
-
   public readonly maxCount!: number;
   public readonly name!: string;
 
