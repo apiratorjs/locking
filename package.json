@@ -26,11 +26,14 @@
     "semaphore",
     "concurrency",
     "synchronization",
-    "async",
-    "node",
     "distributed-locking",
     "distributed-mutex",
-    "distributed-semaphore"
+    "distributed-semaphore",
+    "critical-section",
+    "race-condition",
+    "resource-sharing",
+    "thread-safety",
+    "concurrent-access"
   ],
   "type": "commonjs",
   "scripts": {
