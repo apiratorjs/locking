@@ -16,7 +16,7 @@ export class Mutex implements IMutex {
     return this._semaphore.release();
   }
 
-  cancel(): Promise<void> {
+  cancel(errMessage?: string): Promise<void> {
     return this._semaphore.cancelAll("Mutex acquisition cancelled");
   }
 

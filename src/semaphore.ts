@@ -1,13 +1,7 @@
 import assert from "node:assert";
-import { ISemaphore } from "./types";
+import { Deferred, ISemaphore } from "./types";
 
 const DEFAULT_TIMEOUT_IN_MS = 1_000 * 60; // 1 minute
-
-type Deferred = {
-  resolve: () => void;
-  reject: (error: Error) => void;
-  timer?: NodeJS.Timeout | null;
-}
 
 export class Semaphore implements ISemaphore {
   public readonly maxCount: number;

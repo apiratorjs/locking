@@ -9,3 +9,5 @@ src/
 samples/
 *.test.ts
 *.test.js
+docker-compose.yml
+redis-data/
