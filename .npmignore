@@ -1,0 +1,11 @@
+.idea/
+.vscode/
+.DS_Store
+node_modules/
+package-lock.json
+tsconfig.json
+test/
+src/
+samples/
+*.test.ts
+*.test.js

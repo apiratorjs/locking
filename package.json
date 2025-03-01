@@ -1,0 +1,49 @@
+{
+  "name": "@apiratorjs/locking",
+  "version": "1.0.0",
+  "description": "A lightweight library providing both local and distributed locking primitives (mutexes and semaphores) for managing concurrency in Node.js.",
+  "author": {
+    "name": "Oleksii Zaitsev",
+    "url": "https://oleksiizaitsev.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/apiratorjs/locking.git"
+  },
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
+  "files": [
+    "dist/src",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "locking",
+    "mutex",
+    "semaphore",
+    "concurrency",
+    "synchronization",
+    "async",
+    "node",
+    "distributed-locking",
+    "distributed-mutex",
+    "distributed-semaphore"
+  ],
+  "type": "commonjs",
+  "scripts": {
+    "build": "rm -rf dist && tsc",
+    "watch": "tsc --watch",
+    "test": "node --test dist/test"
+  },
+  "engines": {
+    "node": ">=16.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
