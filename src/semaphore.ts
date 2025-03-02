@@ -21,8 +21,8 @@ export class Semaphore implements ISemaphore {
     return this._freeCount;
   }
 
-  public async acquire(params?: { timeoutInMs?: number; }): Promise<void> {
-    const timeoutInMs = params?.timeoutInMs || DEFAULT_TIMEOUT_IN_MS;
+  public async acquire(params?: { timeoutMs?: number; }): Promise<void> {
+    const timeoutMs = params?.timeoutMs || DEFAULT_TIMEOUT_IN_MS;
 
     if (this._freeCount > 0) {
       this._freeCount--;
@@ -43,7 +43,7 @@ export class Semaphore implements ISemaphore {
         }
 
         reject(new Error("Timeout acquiring semaphore"));
-      }, timeoutInMs);
+      }, timeoutMs);
 
       this._queue.push(deferred);
     });
@@ -65,14 +65,14 @@ export class Semaphore implements ISemaphore {
     }
   }
 
-  public async cancelAll(errMessage = "Semaphore acquisition cancelled"): Promise<void> {
+  public async cancelAll(errMessage?: string): Promise<void> {
     while (this._queue.length > 0) {
       const { timer, reject } = this._queue.shift()!;
 
       if (timer) {
         clearTimeout(timer);
       }
-      reject(new Error(errMessage));
+      reject(new Error(errMessage ?? "Semaphore cancelled"));
     }
 
     this._freeCount = this.maxCount;

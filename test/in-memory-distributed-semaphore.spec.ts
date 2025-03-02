@@ -46,7 +46,7 @@ describe("DistributedSemaphore (In Memory by default)", () => {
 
     let error: Error | undefined;
     try {
-      await semaphore.acquire({ timeoutInMs: 100 });
+      await semaphore.acquire({ timeoutMs: 100 });
     } catch (err: any) {
       error = err;
     }
@@ -72,8 +72,8 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     // Wait for both promises to settle.
     await Promise.allSettled([p1, p2]);
 
-    assert.strictEqual(error1!.message, "Semaphore acquisition cancelled");
-    assert.strictEqual(error2!.message, "Semaphore acquisition cancelled");
+    assert.strictEqual(error1!.message, "Semaphore cancelled");
+    assert.strictEqual(error2!.message, "Semaphore cancelled");
 
     await semaphore.release();
   });
@@ -159,7 +159,7 @@ describe("DistributedSemaphore (In Memory by default)", () => {
 
     await pending;
     assert.ok(errorFromSem2! instanceof Error, "Pending acquire should be rejected after cancelAll");
-    assert.strictEqual(errorFromSem2!.message, "Semaphore acquisition cancelled");
+    assert.strictEqual(errorFromSem2!.message, "Semaphore cancelled");
 
     await sem1.release();
     assert.strictEqual(await sem1.freeCount(), 1, "Semaphore should be free after release");

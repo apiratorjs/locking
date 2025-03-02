@@ -41,7 +41,7 @@ describe("Semaphore", () => {
 
     let error: Error | undefined;
     try {
-      await semaphore.acquire({ timeoutInMs: 100 });
+      await semaphore.acquire({ timeoutMs: 100 });
     } catch (err: any) {
       error = err;
     }
@@ -67,8 +67,8 @@ describe("Semaphore", () => {
     // Wait for both promises to settle.
     await Promise.allSettled([p1, p2]);
 
-    assert.strictEqual(error1!.message, "Semaphore acquisition cancelled");
-    assert.strictEqual(error2!.message, "Semaphore acquisition cancelled");
+    assert.strictEqual(error1!.message, "Semaphore cancelled");
+    assert.strictEqual(error2!.message, "Semaphore cancelled");
 
     await semaphore.release();
   });

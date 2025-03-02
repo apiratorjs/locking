@@ -9,7 +9,7 @@ export interface ISemaphore {
 
   freeCount(): Promise<number>;
 
-  acquire(params?: { timeoutInMs?: number; }): Promise<void>;
+  acquire(params?: { timeoutMs?: number; }): Promise<void>;
 
   release(): Promise<void>;
 
@@ -19,7 +19,7 @@ export interface ISemaphore {
 }
 
 export interface IMutex {
-  acquire(params?: { timeoutInMs?: number; }): Promise<void>;
+  acquire(params?: { timeoutMs?: number; }): Promise<void>;
 
   release(): Promise<void>;
 
@@ -31,13 +31,17 @@ export interface IMutex {
 export interface IDistributedSemaphore extends ISemaphore {
   name: string;
 
-  getProvider(): any;
+  implementation: string;
+
+  destroy(): Promise<void>;
 }
 
 export interface IDistributedMutex extends IMutex {
   name: string;
 
-  getProvider(): any;
+  implementation: string;
+
+  destroy(): Promise<void>;
 }
 
 export type DistributedSemaphoreConstructorProps = {

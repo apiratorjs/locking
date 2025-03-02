@@ -45,7 +45,7 @@ describe("DistributedMutex (In Memory by default)", () => {
 
     let error: Error | undefined;
     try {
-      await mutex.acquire({ timeoutInMs: 100 });
+      await mutex.acquire({ timeoutMs: 100 });
     } catch (err: any) {
       error = err;
     }
@@ -69,8 +69,8 @@ describe("DistributedMutex (In Memory by default)", () => {
 
     await Promise.allSettled([p1, p2]);
 
-    assert.strictEqual(error1!.message, "Mutex acquisition cancelled");
-    assert.strictEqual(error2!.message, "Mutex acquisition cancelled");
+    assert.strictEqual(error1!.message, "Mutex cancelled");
+    assert.strictEqual(error2!.message, "Mutex cancelled");
 
     await mutex.release();
   });
@@ -151,7 +151,7 @@ describe("DistributedMutex (In Memory by default)", () => {
 
     await pending;
     assert.ok(errorFromMutex2 instanceof Error, "Pending acquire should be cancelled with an error");
-    assert.strictEqual(errorFromMutex2!.message, "Mutex acquisition cancelled");
+    assert.strictEqual(errorFromMutex2!.message, "Mutex cancelled");
 
     await mutex1.release();
     assert.strictEqual(await mutex1.isLocked(), false, "Mutex should be unlocked after release");

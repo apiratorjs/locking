@@ -8,7 +8,7 @@ export class Mutex implements IMutex {
     this._semaphore = new Semaphore(1);
   }
 
-  acquire(params?: { timeoutInMs?: number; }): Promise<void> {
+  acquire(params?: { timeoutMs?: number; }): Promise<void> {
     return this._semaphore.acquire(params);
   }
 
@@ -17,7 +17,7 @@ export class Mutex implements IMutex {
   }
 
   cancel(errMessage?: string): Promise<void> {
-    return this._semaphore.cancelAll("Mutex acquisition cancelled");
+    return this._semaphore.cancelAll(errMessage ?? "Mutex cancelled");
   }
 
   isLocked(): Promise<boolean> {

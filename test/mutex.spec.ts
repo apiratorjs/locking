@@ -38,7 +38,7 @@ describe("Mutex", () => {
 
     let error: Error | undefined;
     try {
-      await mutex.acquire({ timeoutInMs: 100 });
+      await mutex.acquire({ timeoutMs: 100 });
     } catch (err: any) {
       error = err;
     }
@@ -62,8 +62,8 @@ describe("Mutex", () => {
 
     await Promise.allSettled([p1, p2]);
 
-    assert.strictEqual(error1!.message, "Mutex acquisition cancelled");
-    assert.strictEqual(error2!.message, "Mutex acquisition cancelled");
+    assert.strictEqual(error1!.message, "Mutex cancelled");
+    assert.strictEqual(error2!.message, "Mutex cancelled");
 
     await mutex.release();
   });

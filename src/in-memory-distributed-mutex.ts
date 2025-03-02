@@ -1,5 +1,6 @@
 import { DistributedMutexConstructorProps, IDistributedMutex } from "./types";
 import { DistributedSemaphore } from "./distributed-semaphore";
+import { inMemoryDistributedSemaphoreStore } from "./in-memory-distributed-semaphore";
 
 export class InMemoryDistributedMutex implements IDistributedMutex {
   private readonly _distributedSemaphore: DistributedSemaphore;
@@ -14,23 +15,29 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
     });
   }
 
-  getProvider() {
+  public readonly implementation: string = "in-memory";
+
+  public async destroy(): Promise<void> {
+    inMemoryDistributedSemaphoreStore.delete(this.name);
+  }
+
+  public getProvider() {
     return this._distributedSemaphore;
   }
 
-  acquire(params?: { timeoutInMs?: number; }): Promise<void> {
+  public acquire(params?: { timeoutMs?: number; }): Promise<void> {
     return this._distributedSemaphore.acquire(params);
   }
 
-  release(): Promise<void> {
+  public release(): Promise<void> {
     return this._distributedSemaphore.release();
   }
 
-  cancel(errMessage?: string): Promise<void> {
+  public cancel(errMessage?: string): Promise<void> {
     return this._distributedSemaphore.cancelAll(errMessage);
   }
 
-  isLocked(): Promise<boolean> {
+  public isLocked(): Promise<boolean> {
     return this._distributedSemaphore.isLocked();
   }
 }

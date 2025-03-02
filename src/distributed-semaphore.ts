@@ -3,47 +3,51 @@ import assert from "node:assert";
 import { InMemoryDistributedSemaphore } from "./in-memory-distributed-semaphore";
 
 export class DistributedSemaphore implements IDistributedSemaphore {
-  public static concreteImplementationFactory: DistributedSemaphoreFactory =
+  public static factory: DistributedSemaphoreFactory =
     (props: DistributedSemaphoreConstructorProps) => new InMemoryDistributedSemaphore(props);
 
-  private readonly _concreteImplementation: IDistributedSemaphore;
+  private readonly _implementation: IDistributedSemaphore;
 
   public constructor(props: DistributedSemaphoreConstructorProps) {
     assert.ok(props.maxCount > 0, "maxCount must be greater than 0");
-    assert.ok(props.name, "name must be provided");
+    assert.ok(props.name, "DistributedSemaphore requires a non-empty name.");
 
-    this._concreteImplementation = DistributedSemaphore.concreteImplementationFactory(props);
+    this._implementation = DistributedSemaphore.factory(props);
+  }
+
+  public async destroy(): Promise<void> {
+    return this._implementation.destroy();
   }
 
   public get name(): string {
-    return this._concreteImplementation.name;
+    return this._implementation.name;
   };
 
   public get maxCount(): number {
-    return this._concreteImplementation.maxCount;
+    return this._implementation.maxCount;
   };
 
-  public async getProvider() {
-    return this._concreteImplementation;
+  public get implementation() {
+    return this._implementation.implementation;
   }
 
   public async freeCount(): Promise<number> {
-    return this._concreteImplementation.freeCount();
+    return this._implementation.freeCount();
   }
 
-  public async acquire(params?: { timeoutInMs?: number; }): Promise<void> {
-    return this._concreteImplementation.acquire(params);
+  public async acquire(params?: { timeoutMs?: number; }): Promise<void> {
+    return this._implementation.acquire(params);
   }
 
   public async release(): Promise<void> {
-    return this._concreteImplementation.release();
+    return this._implementation.release();
   }
 
   public async cancelAll(errMessage?: string): Promise<void> {
-    return this._concreteImplementation.cancelAll(errMessage);
+    return this._implementation.cancelAll(errMessage ?? "Semaphore cancelled");
   }
 
   public async isLocked(): Promise<boolean> {
-    return this._concreteImplementation.isLocked();
+    return this._implementation.isLocked();
   }
 }
