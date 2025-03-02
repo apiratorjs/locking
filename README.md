@@ -153,6 +153,21 @@ async function main() {
 main();
 ````
 
+```typescript
+import { Mutex } from "@apiratorjs/locking";
+
+(async () => {
+  const mutex = new Mutex();
+
+  const result = await mutex.runExclusive({ timeoutMs: 2000 }, async () => {
+    console.log("Local mutex locked automatically.");
+    return 42;
+  });
+
+  console.log("Lock was released automatically. Result =", result);
+})();
+```
+
 ### Local Semaphore
 
 A semaphore allows you to limit concurrent access by a specified count:
@@ -216,6 +231,21 @@ async function main() {
 
 main();
 ````
+
+```typescript
+import { Semaphore } from "@apiratorjs/locking";
+
+(async () => {
+  const semaphore = new Semaphore(3);
+
+  const data = await semaphore.runExclusive({ timeoutMs: 1000 }, async () => {
+    console.log("Acquired one of the semaphore slots automatically.");
+    return "Some data";
+  });
+
+  console.log("Semaphore slot released automatically. Data =", data);
+})();
+```
 
 ### Distributed Mutex
 

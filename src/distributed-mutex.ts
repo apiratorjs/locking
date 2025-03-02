@@ -1,4 +1,4 @@
-import { DistributedMutexConstructorProps, DistributedMutexFactory, IDistributedMutex } from "./types";
+import { AcquireParams, DistributedMutexConstructorProps, DistributedMutexFactory, IDistributedMutex } from "./types";
 import { InMemoryDistributedMutex } from "./in-memory-distributed-mutex";
 import assert from "node:assert";
 
@@ -14,8 +14,11 @@ export class DistributedMutex implements IDistributedMutex {
     this._implementation = DistributedMutex.factory(props);
   }
 
-  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
-    return this._implementation.runExclusive(fn);
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(...args: any[]): Promise<T> {
+    // @ts-ignore
+    return this._implementation.runExclusive(...args);
   }
 
   public async destroy(): Promise<void> {

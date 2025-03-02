@@ -1,5 +1,5 @@
 import { Semaphore } from "./semaphore";
-import { IMutex } from "./types";
+import { AcquireParams, IMutex } from "./types";
 
 export class Mutex implements IMutex {
   private readonly _semaphore: Semaphore;
@@ -8,8 +8,11 @@ export class Mutex implements IMutex {
     this._semaphore = new Semaphore(1);
   }
 
-  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
-    return this._semaphore.runExclusive<T>(fn);
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(...args: any[]): Promise<T> {
+    // @ts-ignore
+    return this._semaphore.runExclusive<T>(...args);
   }
 
   public async acquire(params?: { timeoutMs?: number; }): Promise<void> {

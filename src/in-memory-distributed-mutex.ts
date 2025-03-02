@@ -1,4 +1,4 @@
-import { DistributedMutexConstructorProps, IDistributedMutex } from "./types";
+import { AcquireParams, DistributedMutexConstructorProps, IDistributedMutex } from "./types";
 import { DistributedSemaphore } from "./distributed-semaphore";
 import { inMemoryDistributedSemaphoreStore } from "./in-memory-distributed-semaphore";
 
@@ -15,8 +15,11 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
     });
   }
 
-  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
-    return this._distributedSemaphore.runExclusive(fn);
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(...args: any[]): Promise<T> {
+    // @ts-ignore
+    return this._distributedSemaphore.runExclusive(...args);
   }
 
   public readonly implementation: string = "in-memory";

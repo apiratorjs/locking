@@ -1,5 +1,5 @@
 import assert from "node:assert";
-import { Deferred, ISemaphore } from "./types";
+import { AcquireParams, Deferred, ISemaphore } from "./types";
 
 const DEFAULT_TIMEOUT_IN_MS = 1_000 * 60; // 1 minute
 
@@ -17,10 +17,22 @@ export class Semaphore implements ISemaphore {
     this._queue = [];
   }
 
-  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
-    await this.acquire();
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(...args: any[]): Promise<T> {
+    let callback: () => Promise<T> | T;
+    let params: AcquireParams | undefined;
+
+    if (args.length === 1) {
+      callback = args[0];
+    } else {
+      params = args[0];
+      callback = args[1];
+    }
+
+    await this.acquire(params);
     try {
-      return await fn();
+      return await callback();
     } finally {
       await this.release();
     }

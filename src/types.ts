@@ -4,12 +4,16 @@ export type Deferred = {
   timer?: NodeJS.Timeout | null;
 }
 
+export type AcquireParams = {
+  timeoutMs?: number;
+};
+
 export interface ISemaphore {
   maxCount: number;
 
   freeCount(): Promise<number>;
 
-  acquire(params?: { timeoutMs?: number; }): Promise<void>;
+  acquire(params?: AcquireParams): Promise<void>;
 
   release(): Promise<void>;
 
@@ -18,10 +22,12 @@ export interface ISemaphore {
   isLocked(): Promise<boolean>;
 
   runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
+
+  runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>;
 }
 
 export interface IMutex {
-  acquire(params?: { timeoutMs?: number; }): Promise<void>;
+  acquire(params?: AcquireParams): Promise<void>;
 
   release(): Promise<void>;
 
@@ -30,6 +36,8 @@ export interface IMutex {
   isLocked(): Promise<boolean>;
 
   runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
+
+  runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>;
 }
 
 export interface IDistributedSemaphore extends ISemaphore {

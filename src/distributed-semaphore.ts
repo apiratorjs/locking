@@ -1,4 +1,9 @@
-import { DistributedSemaphoreConstructorProps, DistributedSemaphoreFactory, IDistributedSemaphore } from "./types";
+import {
+  AcquireParams,
+  DistributedSemaphoreConstructorProps,
+  DistributedSemaphoreFactory,
+  IDistributedSemaphore
+} from "./types";
 import assert from "node:assert";
 import { InMemoryDistributedSemaphore } from "./in-memory-distributed-semaphore";
 
@@ -15,8 +20,11 @@ export class DistributedSemaphore implements IDistributedSemaphore {
     this._implementation = DistributedSemaphore.factory(props);
   }
 
-  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
-    return this._implementation.runExclusive<T>(fn);
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(...args: any[]): Promise<T> {
+    // @ts-ignore
+    return this._implementation.runExclusive<T>(...args);
   }
 
   public async destroy(): Promise<void> {
