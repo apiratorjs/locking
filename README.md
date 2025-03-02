@@ -11,6 +11,28 @@ multi-instance environments, it supports (via additional packages) distributed l
 
 ---
 
+## What Are Mutexes and Semaphores?
+
+- **Mutex**
+  - A mutex (short for “mutual exclusion”) ensures only one operation or task can access a resource at any time.
+  - Once acquired by a task, other tasks must wait until it is released.
+  - Real-life analogy: A bathroom key in a small office. If one person is using the bathroom (has the key), no one else can enter until the key is returned.
+
+- **When to use a Mutex**
+  - Whenever you need exclusive access to a shared resource.
+  - For example, updating a single record in a file or database so that no two processes modify it at the same time.
+
+
+- **Semaphore**
+  - A semaphore manages access to a resource by keeping track of a certain number of “permits.” A task must acquire a permit before it can proceed, and releases a permit when finished.
+  - Semaphores allow multiple concurrent holders (up to a limit), rather than just one.
+  - Real-life analogy: A parking garage with a limited number of parking spots. Each car must find an available spot (permit) to park, and if the garage is full, incoming cars must wait for someone to leave.
+- **When to use a Semaphore**
+  - Whenever you need to limit concurrency to a fixed number.
+  - For example, limiting the number of simultaneous API requests or controlling concurrency in a task queue.
+
+---
+
 ## Features
 
 ### Local Locking Primitives
