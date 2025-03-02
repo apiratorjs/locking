@@ -404,22 +404,26 @@ to enable Redis-based locking primitives. You would then configure the `Distribu
 
 ```typescript
 import { DistributedSemaphore } from "@apiratorjs/locking";
-import { createRedisSemaphore } from "@apiratorjs/locking-redis";
+import { createRedisSemaphoreFactory } from "@apiratorjs/locking-redis";
 
-DistributedSemaphore.factory = createRedisSemaphore;
+(async () => {
+  DistributedSemaphore.factory = await createRedisSemaphoreFactory({ url: REDIS_URL });
 
-// Now all new DistributedSemaphore instances use Redis for synchronization
-const semaphore = new DistributedSemaphore({ name: "shared-name", maxCount: 5 });
+  // Now all new DistributedSemaphore instances use Redis for synchronization
+  const semaphore = new DistributedSemaphore({ name: "shared-name", maxCount: 5 });
+})();
 ```
 
 ```typescript
 import { DistributedMutex } from "@apiratorjs/locking";
-import { createRedisMutex } from "@apiratorjs/locking-redis";
+import { createRedisMutexFactory } from "@apiratorjs/locking-redis";
 
-DistributedMutex.factory = createRedisMutex;
+(async () => {
+  DistributedMutex.factory = await createRedisMutexFactory({ url: REDIS_URL });
 
-// Now all new DistributedMutex instances use Redis for synchronization
-const mutex = new DistributedMutex({ name: "shared-name" });
+  // Now all new DistributedMutex instances use Redis for synchronization
+  const mutex = new DistributedMutex({ name: "shared-name" });
+})();
 ```
 
 ---
