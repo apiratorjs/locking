@@ -15,6 +15,10 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
     });
   }
 
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
+    return this._distributedSemaphore.runExclusive(fn);
+  }
+
   public readonly implementation: string = "in-memory";
 
   public async destroy(): Promise<void> {

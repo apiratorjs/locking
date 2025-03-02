@@ -14,6 +14,15 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     inMemoryDistributedSemaphoreStore.set(this.name, new Semaphore(this.maxCount));
   }
 
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      await this.release();
+    }
+  }
+
   public async destroy(): Promise<void> {
     inMemoryDistributedSemaphoreStore.delete(this.name);
   }

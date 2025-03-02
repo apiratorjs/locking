@@ -17,6 +17,15 @@ export class Semaphore implements ISemaphore {
     this._queue = [];
   }
 
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
+    await this.acquire();
+    try {
+      return await fn();
+    } finally {
+      await this.release();
+    }
+  }
+
   public async freeCount(): Promise<number> {
     return this._freeCount;
   }

@@ -16,6 +16,8 @@ export interface ISemaphore {
   cancelAll(errMessage?: string): Promise<void>;
 
   isLocked(): Promise<boolean>;
+
+  runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
 }
 
 export interface IMutex {
@@ -26,6 +28,8 @@ export interface IMutex {
   cancel(errMessage?: string): Promise<void>;
 
   isLocked(): Promise<boolean>;
+
+  runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
 }
 
 export interface IDistributedSemaphore extends ISemaphore {

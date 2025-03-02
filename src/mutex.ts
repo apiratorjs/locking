@@ -8,19 +8,23 @@ export class Mutex implements IMutex {
     this._semaphore = new Semaphore(1);
   }
 
-  acquire(params?: { timeoutMs?: number; }): Promise<void> {
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
+    return this._semaphore.runExclusive<T>(fn);
+  }
+
+  public async acquire(params?: { timeoutMs?: number; }): Promise<void> {
     return this._semaphore.acquire(params);
   }
 
-  release(): Promise<void> {
+  public async release(): Promise<void> {
     return this._semaphore.release();
   }
 
-  cancel(errMessage?: string): Promise<void> {
+  public async cancel(errMessage?: string): Promise<void> {
     return this._semaphore.cancelAll(errMessage ?? "Mutex cancelled");
   }
 
-  isLocked(): Promise<boolean> {
+  public async isLocked(): Promise<boolean> {
     return this._semaphore.isLocked();
   }
 }

@@ -90,6 +90,21 @@ async function main() {
 main();
 ```
 
+```typescript
+import { Mutex } from "@apiratorjs/locking";
+
+(async () => {
+  const mutex = new Mutex();
+
+  const result = await mutex.runExclusive(async () => {
+    console.log("Local mutex locked automatically.");
+    return 42;
+  });
+
+  console.log("Lock was released automatically. Result =", result);
+})();
+```
+
 Timeouts
 
 A mutex can wait for a specified duration to acquire the lock before throwing an error.
@@ -140,6 +155,21 @@ async function main() {
 }
 
 main();
+```
+
+```typescript
+import { Semaphore } from "@apiratorjs/locking";
+
+(async () => {
+  const semaphore = new Semaphore(3);
+
+  const data = await semaphore.runExclusive(async () => {
+    console.log("Acquired one of the semaphore slots automatically.");
+    return "Some data";
+  });
+
+  console.log("Semaphore slot released automatically. Data =", data);
+})();
 ```
 
 Timeouts
@@ -196,6 +226,21 @@ async function main() {
 main();
 ```
 
+```typescript
+import { DistributedMutex } from "@apiratorjs/locking";
+
+(async () => {
+  const mutex = new DistributedMutex({ name: "shared-distributed-mutex" });
+
+  const result = await mutex.runExclusive(async () => {
+    console.log("Distributed mutex locked automatically (single-process in-memory by default).");
+    return 123;
+  });
+
+  console.log("Distributed mutex released automatically. Result =", result);
+})();
+```
+
 Timeouts
 
 ```typescript
@@ -248,6 +293,24 @@ async function main() {
 }
 
 main();
+```
+
+```typescript
+import { DistributedSemaphore } from "@apiratorjs/locking";
+
+(async () => {
+  const semaphore = new DistributedSemaphore({
+    name: "shared-distributed-semaphore",
+    maxCount: 3,
+  });
+
+  const data = await semaphore.runExclusive(async () => {
+    console.log("Distributed semaphore slot acquired automatically.");
+    return "some result";
+  });
+
+  console.log("Distributed semaphore slot released automatically. Data =", data);
+})();
 ```
 
 Timeouts

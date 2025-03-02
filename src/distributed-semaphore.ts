@@ -15,6 +15,10 @@ export class DistributedSemaphore implements IDistributedSemaphore {
     this._implementation = DistributedSemaphore.factory(props);
   }
 
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
+    return this._implementation.runExclusive<T>(fn);
+  }
+
   public async destroy(): Promise<void> {
     return this._implementation.destroy();
   }

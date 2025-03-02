@@ -14,6 +14,10 @@ export class DistributedMutex implements IDistributedMutex {
     this._implementation = DistributedMutex.factory(props);
   }
 
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T> {
+    return this._implementation.runExclusive(fn);
+  }
+
   public async destroy(): Promise<void> {
     return this._implementation.destroy();
   }

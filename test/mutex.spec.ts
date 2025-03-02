@@ -96,4 +96,76 @@ describe("Mutex", () => {
     await Promise.all(tasks);
     assert.strictEqual(maxConcurrent, 1, "Max concurrent tasks should not exceed 1");
   });
+
+  it("should acquire and release the mutex automatically", async () => {
+    const mutex = new Mutex();
+    let lockedInside = false;
+
+    await mutex.runExclusive(() => {
+      lockedInside = true;
+      return;
+    });
+
+    assert.strictEqual(lockedInside, true, "Callback should have been executed");
+    assert.strictEqual(await mutex.isLocked(), false, "Mutex should be unlocked after runExclusive");
+  });
+
+  it("should return the result of the callback", async () => {
+    const mutex = new Mutex();
+
+    const result = await mutex.runExclusive(() => {
+      return 42;
+    });
+
+    assert.strictEqual(result, 42, "runExclusive should return the callback’s result");
+  });
+
+  it("should handle async callbacks properly", async () => {
+    const mutex = new Mutex();
+
+    const result = await mutex.runExclusive(async () => {
+      await sleep(50);
+      return "async result";
+    });
+
+    assert.strictEqual(result, "async result", "runExclusive should return result of async callback");
+    assert.strictEqual(await mutex.isLocked(), false, "Mutex should be unlocked");
+  });
+
+
+  it("should release the mutex if the callback throws an error", async () => {
+    const mutex = new Mutex();
+
+    let errorCaught = false;
+    try {
+      await mutex.runExclusive(() => {
+        throw new Error("Test Error");
+      });
+    } catch (err: any) {
+      errorCaught = true;
+      assert.strictEqual(err.message, "Test Error");
+    }
+
+    assert.strictEqual(errorCaught, true, "Error should be thrown from callback");
+    assert.strictEqual(await mutex.isLocked(), false, "Mutex should be unlocked after error");
+  });
+
+  it("should enforce exclusive access", async () => {
+    const mutex = new Mutex();
+    let concurrent = 0;
+    let maxConcurrent = 0;
+
+    const tasks = Array.from({ length: 5 }).map(async () => {
+      return mutex.runExclusive(async () => {
+        concurrent++;
+        maxConcurrent = Math.max(maxConcurrent, concurrent);
+        await sleep(50);
+        concurrent--;
+      });
+    });
+
+    await Promise.all(tasks);
+
+    assert.strictEqual(maxConcurrent, 1, "Should never exceed concurrency of 1");
+  });
 });

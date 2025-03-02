@@ -106,4 +106,71 @@ describe("Semaphore", () => {
     await Promise.all(tasks);
     assert.ok(maxConcurrent <= 3, "Max concurrent tasks should not exceed semaphore limit");
   });
+
+  it("should acquire and release a semaphore slot automatically", async () => {
+    const semaphore = new Semaphore(2);
+    let insideCallback = false;
+
+    await semaphore.runExclusive(() => {
+      insideCallback = true;
+    });
+
+    assert.strictEqual(insideCallback, true, "Callback should have run");
+    assert.strictEqual(await semaphore.freeCount(), 2, "Semaphore should have all slots free after runExclusive");
+  });
+
+  it("should return the callback's result", async () => {
+    const semaphore = new Semaphore(2);
+    const result = await semaphore.runExclusive(() => 1234);
+
+    assert.strictEqual(result, 1234, "Should return the callback’s value");
+  });
+
+  it("should handle async callbacks", async () => {
+    const semaphore = new Semaphore(2);
+    const result = await semaphore.runExclusive(async () => {
+      await sleep(20);
+      return "hello";
+    });
+
+    assert.strictEqual(result, "hello");
+    assert.strictEqual(await semaphore.freeCount(), 2, "All slots should be free again");
+  });
+
+
+  it("should release a slot if the callback throws an error", async () => {
+    const semaphore = new Semaphore(2);
+
+    let errorCaught = false;
+    try {
+      await semaphore.runExclusive(() => {
+        throw new Error("Failing callback");
+      });
+    } catch (err: any) {
+      errorCaught = true;
+      assert.strictEqual(err.message, "Failing callback");
+    }
+
+    assert.strictEqual(errorCaught, true, "Error was not caught");
+    assert.strictEqual(await semaphore.freeCount(), 2, "All slots should be free");
+  });
+
+
+  it("should enforce the semaphore concurrency limit", async () => {
+    const semaphore = new Semaphore(2);
+    let concurrent = 0;
+    let maxConcurrent = 0;
+
+    const tasks = Array.from({ length: 5 }).map(async () => {
+      return semaphore.runExclusive(async () => {
+        concurrent++;
+        maxConcurrent = Math.max(maxConcurrent, concurrent);
+        await sleep(30);
+        concurrent--;
+      });
+    });
+
+    await Promise.all(tasks);
+    assert.ok(maxConcurrent <= 2, "Should respect concurrency limit of 2");
+  });
 });
