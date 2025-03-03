@@ -1,5 +1,5 @@
 import { AcquireParams, DistributedMutexConstructorProps, DistributedMutexFactory, IDistributedMutex } from "./types";
-import { InMemoryDistributedMutex } from "./in-memory-distributed-mutex";
+import { InMemoryDistributedMutex } from "./in-memory-distributed/in-memory-distributed-mutex";
 import assert from "node:assert";
 
 export class DistributedMutex implements IDistributedMutex {
@@ -12,6 +12,10 @@ export class DistributedMutex implements IDistributedMutex {
     assert.ok(props.name, "DistributedMutex requires a non-empty name.");
 
     this._implementation = DistributedMutex.factory(props);
+  }
+
+  get isDestroyed() {
+    return this._implementation.isDestroyed;
   }
 
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>

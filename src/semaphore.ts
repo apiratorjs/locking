@@ -93,6 +93,7 @@ export class Semaphore implements ISemaphore {
       if (timer) {
         clearTimeout(timer);
       }
+
       reject(new Error(errMessage ?? "Semaphore cancelled"));
     }
 

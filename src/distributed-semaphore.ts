@@ -5,11 +5,12 @@ import {
   IDistributedSemaphore
 } from "./types";
 import assert from "node:assert";
-import { InMemoryDistributedSemaphore } from "./in-memory-distributed-semaphore";
+import { InMemoryDistributedSemaphore } from "./in-memory-distributed/in-memory-distributed-semaphore";
+import { inMemoryDistributedSemaphoreRegistry } from "./in-memory-distributed/in-memory-distributed-registry";
 
 export class DistributedSemaphore implements IDistributedSemaphore {
   public static factory: DistributedSemaphoreFactory =
-    (props: DistributedSemaphoreConstructorProps) => new InMemoryDistributedSemaphore(props);
+    (props: DistributedSemaphoreConstructorProps) => new InMemoryDistributedSemaphore(props, inMemoryDistributedSemaphoreRegistry);
 
   private readonly _implementation: IDistributedSemaphore;
 
@@ -18,6 +19,10 @@ export class DistributedSemaphore implements IDistributedSemaphore {
     assert.ok(props.name, "DistributedSemaphore requires a non-empty name.");
 
     this._implementation = DistributedSemaphore.factory(props);
+  }
+
+  get isDestroyed() {
+    return this._implementation.isDestroyed;
   }
 
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>

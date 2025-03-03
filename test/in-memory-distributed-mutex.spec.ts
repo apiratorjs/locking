@@ -1,14 +1,13 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert";
 import { sleep } from "./utils";
-import { DistributedMutex } from "../src";
-import { inMemoryDistributedSemaphoreStore } from "../src/in-memory-distributed-semaphore";
+import { DistributedMutex, InMemoryDistributedRegistry } from "../src";
 
 const DISTRIBUTED_MUTEX_NAME = "mutex1";
 
 describe("DistributedMutex (In Memory by default)", () => {
   beforeEach(() => {
-    inMemoryDistributedSemaphoreStore.clear();
+    InMemoryDistributedRegistry.clearMutexRegistry();
   });
 
   it("should immediately acquire and release", async () => {
@@ -155,5 +154,25 @@ describe("DistributedMutex (In Memory by default)", () => {
 
     await mutex1.release();
     assert.strictEqual(await mutex1.isLocked(), false, "Mutex should be unlocked after release");
+  });
+
+  it("should destroy the semaphore and remove it from the store", async () => {
+    const name = "sharedMutex";
+    const mutex = new DistributedMutex({ name });
+
+    await mutex.acquire();
+    await mutex.release();
+    assert.strictEqual(await mutex.isLocked(), false);
+
+    await mutex.destroy();
+    assert.strictEqual(mutex.isDestroyed, true, "Mutex should be marked as destroyed");
+
+    assert.strictEqual(InMemoryDistributedRegistry.hasMutex(mutex.name), false);
+
+    await assert.rejects(
+      async () => mutex.acquire(),
+      /has been destroyed/,
+      "Acquiring after destroy should throw an error"
+    );
   });
 });

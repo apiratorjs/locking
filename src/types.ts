@@ -46,6 +46,8 @@ export interface IDistributedSemaphore extends ISemaphore {
   implementation: string;
 
   destroy(): Promise<void>;
+
+  isDestroyed: boolean;
 }
 
 export interface IDistributedMutex extends IMutex {
@@ -54,6 +56,8 @@ export interface IDistributedMutex extends IMutex {
   implementation: string;
 
   destroy(): Promise<void>;
+
+  isDestroyed: boolean;
 }
 
 export type DistributedSemaphoreConstructorProps = {

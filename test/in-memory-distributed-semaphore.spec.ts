@@ -1,12 +1,11 @@
-import { describe, it, beforeEach } from "node:test";
+import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert";
-import { DistributedSemaphore } from "../src";
+import { DistributedSemaphore, InMemoryDistributedRegistry } from "../src";
 import { sleep } from "./utils";
-import { inMemoryDistributedSemaphoreStore } from "../src/in-memory-distributed-semaphore";
 
 describe("DistributedSemaphore (In Memory by default)", () => {
   beforeEach(() => {
-    inMemoryDistributedSemaphoreStore.clear();
+    InMemoryDistributedRegistry.clearSemaphoreRegistry();
   });
 
   it("should immediately acquire and release", async () => {
@@ -163,5 +162,25 @@ describe("DistributedSemaphore (In Memory by default)", () => {
 
     await sem1.release();
     assert.strictEqual(await sem1.freeCount(), 1, "Semaphore should be free after release");
+  });
+
+  it("should destroy the semaphore and remove it from the store", async () => {
+    const name = "semaphoreDestroyTest";
+    const semaphore = new DistributedSemaphore({ maxCount: 1, name });
+
+    await semaphore.acquire();
+    await semaphore.release();
+    assert.strictEqual(await semaphore.isLocked(), false);
+
+    await semaphore.destroy();
+    assert.strictEqual(semaphore.isDestroyed, true, "Semaphore should be marked as destroyed");
+
+    assert.strictEqual(InMemoryDistributedRegistry.hasSemaphore(semaphore.name), false);
+
+    await assert.rejects(
+      async () => semaphore.acquire(),
+      /has been destroyed/,
+      "Acquiring after destroy should throw an error"
+    );
   });
 });
