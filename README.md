@@ -52,13 +52,13 @@ multi-instance environments, it supports (via additional packages) distributed l
 - **Distributed Mutex**
     - Similar API to the local Mutex.
     - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://www.npmjs.com/package/@apiratorjs/locking-redis))
+    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
       to enable cross-process or multi-instance distributed locking with Redis.
 
 - **Distributed Semaphore**
     - Similar API to the local Semaphore.
     - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://www.npmjs.com/package/@apiratorjs/locking-redis))
+    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
       to enable cross-process or multi-instance distributed locking with Redis.
 
 ### General
@@ -253,7 +253,7 @@ A distributed mutex (by default in this package) uses an in-memory store. This w
 e.g., multiple modules in the same process can share the same name).
 
 > Important: For multi-process or multi-instance environments, use additional backend-specific packages (
-> e.g., [@apiratorjs/locking-redis](https://www.npmjs.com/package/@apiratorjs/locking-redis)).
+> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis)).
 
 ```typescript
 import { DistributedMutex } from "@apiratorjs/locking";
@@ -320,7 +320,7 @@ main();
 A distributed semaphore (by default, also in memory for this package) allows a specified maximum number of holders.
 
 > Important: For multi-process or multi-instance environments, use additional backend-specific packages (
-> e.g., [@apiratorjs/locking-redis](https://www.npmjs.com/package/@apiratorjs/locking-redis)).
+> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis)).
 
 ```typescript
 import { DistributedSemaphore } from "@apiratorjs/locking";
@@ -398,16 +398,18 @@ By default, `DistributedMutex` and `DistributedSemaphore` use an in-memory store
 cross-process synchronization if you run multiple Node.js processes or servers.
 
 If you need actual distributed locking, install an additional package such
-as [@apiratorjs/locking-redis](https://www.npmjs.com/package/@apiratorjs/locking-redis), which plugs into this library
+as [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis), which plugs into this library
 to enable Redis-based locking primitives. You would then configure the `DistributedMutex.factory` or
 `DistributedSemaphore.factory` to use the Redis-based constructor, for example:
 
 ```typescript
 import { DistributedSemaphore } from "@apiratorjs/locking";
-import { createRedisSemaphoreFactory } from "@apiratorjs/locking-redis";
+import { createRedisLockFactory } from "@apiratorjs/locking-redis";
 
 (async () => {
-  DistributedSemaphore.factory = await createRedisSemaphoreFactory({ url: REDIS_URL });
+  const lockFactory = await createRedisLockFactory({ url: "redis://localhost:6379" });
+  
+  DistributedSemaphore.factory = lockFactory.createDistributedSemaphore;
 
   // Now all new DistributedSemaphore instances use Redis for synchronization
   const semaphore = new DistributedSemaphore({ name: "shared-name", maxCount: 5 });
@@ -416,10 +418,12 @@ import { createRedisSemaphoreFactory } from "@apiratorjs/locking-redis";
 
 ```typescript
 import { DistributedMutex } from "@apiratorjs/locking";
-import { createRedisMutexFactory } from "@apiratorjs/locking-redis";
+import { createRedisLockFactory } from "@apiratorjs/locking-redis";
 
 (async () => {
-  DistributedMutex.factory = await createRedisMutexFactory({ url: REDIS_URL });
+  const lockFactory = await createRedisLockFactory({ url: "redis://localhost:6379" });
+  
+  DistributedMutex.factory = lockFactory.createDistributedMutex;
 
   // Now all new DistributedMutex instances use Redis for synchronization
   const mutex = new DistributedMutex({ name: "shared-name" });
