@@ -1,5 +1,5 @@
 export type Deferred = {
-  resolve: () => void;
+  resolve: (...args: any[]) => void;
   reject: (error: Error) => void;
   timer?: NodeJS.Timeout | null;
 }
