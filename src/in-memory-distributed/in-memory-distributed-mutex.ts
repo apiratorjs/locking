@@ -1,4 +1,4 @@
-import { AcquireParams, DistributedMutexConstructorProps, IDistributedMutex } from "../types";
+import { AcquiredDistributedToken, AcquireParams, DistributedMutexConstructorProps, IDistributedMutex } from "../types";
 import { InMemoryDistributedSemaphore } from "./in-memory-distributed-semaphore";
 import { inMemoryDistributedMutexRegistry } from "./in-memory-distributed-registry";
 
@@ -37,7 +37,7 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
     return this._inMemoryDistributedSemaphore.destroy();
   }
 
-  public acquire(params?: { timeoutMs?: number; }): Promise<void> {
+  public acquire(params?: { timeoutMs?: number; }): Promise<AcquiredDistributedToken> {
     return this._inMemoryDistributedSemaphore.acquire(params);
   }
 

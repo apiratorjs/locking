@@ -175,4 +175,14 @@ describe("DistributedMutex (In Memory by default)", () => {
       "Acquiring after destroy should throw an error"
     );
   });
+
+  it("should return acquired distributed token after successful acquire", async () => {
+    const mutex = new DistributedMutex({ name: "semaphore1" });
+
+    const token = await mutex.acquire();
+    assert.ok(token);
+    assert.ok(token.includes(mutex.name));
+
+    await mutex.release();
+  });
 });

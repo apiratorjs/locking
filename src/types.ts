@@ -40,7 +40,9 @@ export interface IMutex {
   runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>;
 }
 
-export interface IDistributedSemaphore extends ISemaphore {
+export type AcquiredDistributedToken = string;
+
+export interface IDistributedSemaphore extends Omit<ISemaphore, "acquire" | "release"> {
   name: string;
 
   implementation: string;
@@ -48,9 +50,13 @@ export interface IDistributedSemaphore extends ISemaphore {
   destroy(): Promise<void>;
 
   isDestroyed: boolean;
+
+  acquire(params?: AcquireParams): Promise<AcquiredDistributedToken>;
+
+  release(token?: AcquiredDistributedToken): Promise<void>;
 }
 
-export interface IDistributedMutex extends IMutex {
+export interface IDistributedMutex extends Omit<IMutex, "acquire" | "release"> {
   name: string;
 
   implementation: string;
@@ -58,6 +64,10 @@ export interface IDistributedMutex extends IMutex {
   destroy(): Promise<void>;
 
   isDestroyed: boolean;
+
+  acquire(params?: AcquireParams): Promise<AcquiredDistributedToken>;
+
+  release(token?: AcquiredDistributedToken): Promise<void>;
 }
 
 export type DistributedSemaphoreConstructorProps = {

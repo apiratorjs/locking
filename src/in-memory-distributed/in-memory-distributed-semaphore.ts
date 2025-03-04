@@ -1,4 +1,9 @@
-import { AcquireParams, DistributedSemaphoreConstructorProps, IDistributedSemaphore } from "../types";
+import {
+  AcquiredDistributedToken,
+  AcquireParams,
+  DistributedSemaphoreConstructorProps,
+  IDistributedSemaphore
+} from "../types";
 import { Semaphore } from "../semaphore";
 
 export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
@@ -10,7 +15,7 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
   public constructor(
     props: DistributedSemaphoreConstructorProps,
     private readonly _registry: Map<string, Semaphore>,
-    private readonly _type = "semaphore",
+    private readonly _type = "semaphore"
   ) {
     this.maxCount = props.maxCount;
     this.name = `${_type}:${props.name}`;
@@ -35,11 +40,11 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
       callback = args[1];
     }
 
-    await this.acquire(params);
+    const token = await this.acquire(params);
     try {
       return await callback();
     } finally {
-      await this.release();
+      await this.release(token);
     }
   }
 
@@ -54,11 +59,14 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     return this.getSemaphoreOrException().freeCount();
   }
 
-  public async acquire(params?: { timeoutMs?: number; }): Promise<void> {
-    return this.getSemaphoreOrException().acquire(params);
+  public async acquire(params?: { timeoutMs?: number; }): Promise<AcquiredDistributedToken> {
+    await this.getSemaphoreOrException().acquire(params);
+
+    // In-memory semaphore does not need a token, so just return for interface compatibility
+    return `${this.name}:${crypto.randomUUID()}`;
   }
 
-  public async release(): Promise<void> {
+  public async release(token?: AcquiredDistributedToken): Promise<void> {
     return this.getSemaphoreOrException().release();
   }
 

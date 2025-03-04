@@ -183,4 +183,14 @@ describe("DistributedSemaphore (In Memory by default)", () => {
       "Acquiring after destroy should throw an error"
     );
   });
+
+  it("should return acquired distributed token after successful acquire", async () => {
+    const semaphore = new DistributedSemaphore({ maxCount: 1, name: "semaphore1" });
+
+    const token = await semaphore.acquire();
+    assert.ok(token);
+    assert.ok(token.includes(semaphore.name));
+
+    await semaphore.release();
+  });
 });

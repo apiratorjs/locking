@@ -262,8 +262,9 @@ async function main() {
   // Create a distributed mutex identified by a unique name
   const mutex = new DistributedMutex({ name: "shared-mutex" });
 
-  // Acquire the mutex
-  await mutex.acquire();
+  // Acquire the mutex and its token.
+  // Depending on the implementation, the token may be required to release the mutex, or it may not.
+  const token = await mutex.acquire();
 
   try {
     // Exclusive access across the same process or
@@ -271,7 +272,9 @@ async function main() {
     console.log("Distributed mutex acquired, performing critical operation.");
   } finally {
     // Always release the mutex
-    await mutex.release();
+    // Depending on the implementation, the token may be required to release the mutex, or it may not.
+    // For distributed in-memory implementation, the token is not required.
+    await mutex.release(token);
   }
 }
 
@@ -332,14 +335,17 @@ async function main() {
     maxCount: 3
   });
 
-  // Acquire a slot
-  await semaphore.acquire();
+  // Acquire the semaphore and its token.
+  // Depending on the implementation, the token may be required to release the mutex, or it may not.
+  const token = await semaphore.acquire();
 
   try {
     // Perform operations that can be concurrently accessed up to 3 times
     console.log("Distributed semaphore acquired.");
   } finally {
     // Always release
+    // Depending on the implementation, the token may be required to release the semaphore slot, or it may not.
+    // For distributed in-memory implementation, the token is not required.
     await semaphore.release();
   }
 }
