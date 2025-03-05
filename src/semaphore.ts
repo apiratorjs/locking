@@ -1,13 +1,28 @@
 import assert from "node:assert";
-import { AcquireParams, Deferred, ISemaphore } from "./types";
+import crypto from "node:crypto";
+import { AcquireToken, AcquireParams, IDeferred, IReleaser, ISemaphore } from "./types";
+import { DEFAULT_TIMEOUT_IN_MS } from "./constants";
 
-const DEFAULT_TIMEOUT_IN_MS = 1_000 * 60; // 1 minute
+class Releaser implements IReleaser {
+  constructor(
+    private readonly _onRelease: () => Promise<void>,
+    private readonly _token: AcquireToken
+  ) {}
+
+  public async release(): Promise<void> {
+    await this._onRelease();
+  }
+
+  public getToken(): AcquireToken {
+    return this._token;
+  }
+}
 
 export class Semaphore implements ISemaphore {
   public readonly maxCount: number;
 
   private _freeCount: number;
-  private _queue: Deferred[];
+  private _queue: IDeferred[];
 
   public constructor(maxCount: number) {
     assert.ok(maxCount > 0, "maxCount must be greater than 0");
@@ -30,11 +45,11 @@ export class Semaphore implements ISemaphore {
       callback = args[1];
     }
 
-    await this.acquire(params);
+    const releaser = await this.acquire(params);
     try {
       return await callback();
     } finally {
-      await this.release();
+      await releaser.release();
     }
   }
 
@@ -42,17 +57,19 @@ export class Semaphore implements ISemaphore {
     return this._freeCount;
   }
 
-  public async acquire(params?: { timeoutMs?: number; }): Promise<void> {
+  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
     const timeoutMs = params?.timeoutMs || DEFAULT_TIMEOUT_IN_MS;
+
+    const releaser = new Releaser(this.release.bind(this), acquireToken ?? crypto.randomUUID());
 
     if (this._freeCount > 0) {
       this._freeCount--;
-      return;
+      return releaser;
     }
 
-    return new Promise<void>((resolve, reject) => {
-      const deferred: Deferred = {
-        resolve,
+    return new Promise<IReleaser>((resolve, reject) => {
+      const deferred: IDeferred = {
+        resolve: () => resolve(releaser),
         reject,
         timer: null
       };
@@ -68,22 +85,6 @@ export class Semaphore implements ISemaphore {
 
       this._queue.push(deferred);
     });
-  }
-
-  public async release(): Promise<void> {
-    if (this._freeCount === this.maxCount) {
-      return;
-    }
-
-    if (this._queue.length > 0) {
-      const { resolve, timer } = this._queue.shift()!;
-      if (timer) {
-        clearTimeout(timer);
-      }
-      resolve();
-    } else {
-      this._freeCount++;
-    }
   }
 
   public async cancelAll(errMessage?: string): Promise<void> {
@@ -102,5 +103,21 @@ export class Semaphore implements ISemaphore {
 
   public async isLocked(): Promise<boolean> {
     return this._freeCount === 0;
-  };
+  }
+
+  private async release(): Promise<void> {
+    if (this._freeCount === this.maxCount) {
+      return;
+    }
+
+    if (this._queue.length > 0) {
+      const { resolve, timer } = this._queue.shift()!;
+      if (timer) {
+        clearTimeout(timer);
+      }
+      resolve();
+    } else {
+      this._freeCount++;
+    }
+  }
 }

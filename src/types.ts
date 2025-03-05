@@ -1,4 +1,4 @@
-export type Deferred = {
+export interface IDeferred {
   resolve: (...args: any[]) => void;
   reject: (error: Error) => void;
   timer?: NodeJS.Timeout | null;
@@ -13,9 +13,7 @@ export interface ISemaphore {
 
   freeCount(): Promise<number>;
 
-  acquire(params?: AcquireParams): Promise<void>;
-
-  release(): Promise<void>;
+  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
 
   cancelAll(errMessage?: string): Promise<void>;
 
@@ -27,9 +25,7 @@ export interface ISemaphore {
 }
 
 export interface IMutex {
-  acquire(params?: AcquireParams): Promise<void>;
-
-  release(): Promise<void>;
+  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
 
   cancel(errMessage?: string): Promise<void>;
 
@@ -40,23 +36,15 @@ export interface IMutex {
   runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>;
 }
 
-export type AcquiredDistributedToken = string;
+export interface IReleaser {
+  release(): Promise<void>;
 
-export interface IDistributedSemaphore extends Omit<ISemaphore, "acquire" | "release"> {
-  name: string;
-
-  implementation: string;
-
-  destroy(): Promise<void>;
-
-  isDestroyed: boolean;
-
-  acquire(params?: AcquireParams): Promise<AcquiredDistributedToken>;
-
-  release(token?: AcquiredDistributedToken): Promise<void>;
+  getToken(): AcquireToken;
 }
 
-export interface IDistributedMutex extends Omit<IMutex, "acquire" | "release"> {
+export type AcquireToken = string;
+
+export interface IDistributedSemaphore extends Omit<ISemaphore, "acquire"> {
   name: string;
 
   implementation: string;
@@ -65,9 +53,19 @@ export interface IDistributedMutex extends Omit<IMutex, "acquire" | "release"> {
 
   isDestroyed: boolean;
 
-  acquire(params?: AcquireParams): Promise<AcquiredDistributedToken>;
+  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
+}
 
-  release(token?: AcquiredDistributedToken): Promise<void>;
+export interface IDistributedMutex extends Omit<IMutex, "acquire"> {
+  name: string;
+
+  implementation: string;
+
+  destroy(): Promise<void>;
+
+  isDestroyed: boolean;
+
+  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
 }
 
 export type DistributedSemaphoreConstructorProps = {

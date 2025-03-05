@@ -1,8 +1,10 @@
+import crypto from "node:crypto";
 import {
-  AcquiredDistributedToken,
   AcquireParams,
+  AcquireToken,
   DistributedSemaphoreConstructorProps,
-  IDistributedSemaphore
+  IDistributedSemaphore,
+  IReleaser
 } from "../types";
 import { Semaphore } from "../semaphore";
 
@@ -40,11 +42,11 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
       callback = args[1];
     }
 
-    const token = await this.acquire(params);
+    const releaser = await this.acquire(params);
     try {
       return await callback();
     } finally {
-      await this.release(token);
+      await releaser.release();
     }
   }
 
@@ -59,15 +61,9 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     return this.getSemaphoreOrException().freeCount();
   }
 
-  public async acquire(params?: { timeoutMs?: number; }): Promise<AcquiredDistributedToken> {
-    await this.getSemaphoreOrException().acquire(params);
-
-    // In-memory semaphore does not need a token, so just return for interface compatibility
-    return `${this.name}:${crypto.randomUUID()}`;
-  }
-
-  public async release(token?: AcquiredDistributedToken): Promise<void> {
-    return this.getSemaphoreOrException().release();
+  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
+    const token = `${this.name}:${crypto.randomUUID()}`;
+    return this.getSemaphoreOrException().acquire(params, acquireToken ?? token);
   }
 
   public async cancelAll(errMessage?: string): Promise<void> {

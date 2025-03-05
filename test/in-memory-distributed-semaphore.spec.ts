@@ -2,6 +2,7 @@ import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert";
 import { DistributedSemaphore, InMemoryDistributedRegistry } from "../src";
 import { sleep } from "./utils";
+import { IReleaser } from "../src/types";
 
 describe("DistributedSemaphore (In Memory by default)", () => {
   beforeEach(() => {
@@ -13,18 +14,18 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     assert.strictEqual(await semaphore.isLocked(), false);
     assert.strictEqual(await semaphore.freeCount(), 1);
 
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
     assert.strictEqual(await semaphore.isLocked(), true);
     assert.strictEqual(await semaphore.freeCount(), 0);
 
-    await semaphore.release();
+    await releaser.release();
     assert.strictEqual(await semaphore.isLocked(), false);
     assert.strictEqual(await semaphore.freeCount(), 1);
   });
 
   it("should wait for semaphore to be available", async () => {
     const semaphore = new DistributedSemaphore({ maxCount: 1, name: "semaphore1" });
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
 
     let acquired = false;
     const acquirePromise = semaphore.acquire().then(() => {
@@ -34,18 +35,18 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     await sleep(50);
     assert.strictEqual(acquired, false, "Second acquire should be waiting");
 
-    await semaphore.release();
+    await releaser.release();
     await acquirePromise;
     assert.strictEqual(acquired, true, "Second acquire should succeed after release");
   });
 
   it("should time out on acquire if semaphore is not released", async () => {
     const semaphore = new DistributedSemaphore({ maxCount: 1, name: "semaphore1" });
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
 
     let error: Error | undefined;
     try {
-      await semaphore.acquire({ timeoutMs: 100 });
+      const releaser2 = await semaphore.acquire({ timeoutMs: 100 });
     } catch (err: any) {
       error = err;
     }
@@ -53,12 +54,12 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     assert.ok(error instanceof Error, "Error should be thrown on timeout");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
-    await semaphore.release();
+    await releaser.release();
   });
 
   it("should cancel all pending acquisitions", async () => {
     const semaphore = new DistributedSemaphore({ maxCount: 1, name: "semaphore1" });
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
 
     let error1: Error | undefined, error2: Error | undefined;
     const p1 = semaphore.acquire().catch((err) => { error1 = err; });
@@ -74,21 +75,21 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     assert.strictEqual(error1!.message, "Semaphore cancelled");
     assert.strictEqual(error2!.message, "Semaphore cancelled");
 
-    await semaphore.release();
+    await releaser.release();
   });
 
   it("should not increase freeCount beyond maxCount on over-release", async () => {
     const semaphore = new DistributedSemaphore({ maxCount: 2, name: "semaphore1" });
 
-    await semaphore.acquire();
-    await semaphore.acquire();
+    const releaser1 = await semaphore.acquire();
+    const releaser2 = await semaphore.acquire();
 
-    await semaphore.release();
-    await semaphore.release();
+    await releaser1.release();
+    await releaser2.release();
 
     assert.strictEqual(await semaphore.isLocked(), false);
 
-    await semaphore.release();
+    await releaser2.release();
     assert.strictEqual(await semaphore.isLocked(), false);
   });
 
@@ -98,13 +99,13 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     let maxConcurrent = 0;
 
     const tasks = Array.from({ length: 10 }).map(async () => {
-      await semaphore.acquire();
+      const releaser = await semaphore.acquire();
       concurrent++;
       maxConcurrent = Math.max(maxConcurrent, concurrent);
       // Simulate asynchronous work.
       await sleep(50);
       concurrent--;
-      await semaphore.release();
+      await releaser.release();
     });
 
     await Promise.all(tasks);
@@ -119,26 +120,28 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     assert.strictEqual(await sem1.freeCount(), 1, "sem1 initial freeCount should be 1");
     assert.strictEqual(await sem2.freeCount(), 1, "sem2 initial freeCount should be 1");
 
-    await sem1.acquire();
+    const releaser1 = await sem1.acquire();
     assert.strictEqual(await sem1.freeCount(), 0, "After sem1 acquire, freeCount should be 0");
     assert.strictEqual(await sem2.freeCount(), 0, "After sem1 acquire, sem2 freeCount should be 0");
 
     let sem2Acquired = false;
-    const acquirePromise = sem2.acquire().then(() => {
+    let releaser2: IReleaser;
+    const acquirePromise = sem2.acquire().then((releaser) => {
+      releaser2 = releaser;
       sem2Acquired = true;
     });
 
     await sleep(50);
     assert.strictEqual(sem2Acquired, false, "sem2 acquire should be pending");
 
-    await sem1.release();
+    await releaser1.release();
     await acquirePromise;
     assert.strictEqual(sem2Acquired, true, "sem2 should acquire after sem1 releases");
 
     assert.strictEqual(await sem1.freeCount(), 0, "After sem2 acquired, freeCount should be 0");
     assert.strictEqual(await sem2.freeCount(), 0, "After sem2 acquired, freeCount should be 0");
 
-    await sem2.release();
+    await releaser2!.release();
     assert.strictEqual(await sem1.freeCount(), 1, "After release, freeCount should be back to 1 (sem1)");
     assert.strictEqual(await sem2.freeCount(), 1, "After release, freeCount should be back to 1 (sem2)");
   });
@@ -148,7 +151,7 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     const sem1 = new DistributedSemaphore({ maxCount: 1, name });
     const sem2 = new DistributedSemaphore({ maxCount: 1, name });
 
-    await sem1.acquire();
+    const releaser1 = await sem1.acquire();
 
     let errorFromSem2: Error;
     const pending = sem2.acquire().catch((err) => { errorFromSem2 = err; });
@@ -160,7 +163,7 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     assert.ok(errorFromSem2! instanceof Error, "Pending acquire should be rejected after cancelAll");
     assert.strictEqual(errorFromSem2!.message, "Semaphore cancelled");
 
-    await sem1.release();
+    await releaser1.release();
     assert.strictEqual(await sem1.freeCount(), 1, "Semaphore should be free after release");
   });
 
@@ -168,8 +171,8 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     const name = "semaphoreDestroyTest";
     const semaphore = new DistributedSemaphore({ maxCount: 1, name });
 
-    await semaphore.acquire();
-    await semaphore.release();
+    const releaser = await semaphore.acquire();
+    await releaser.release();
     assert.strictEqual(await semaphore.isLocked(), false);
 
     await semaphore.destroy();
@@ -187,10 +190,12 @@ describe("DistributedSemaphore (In Memory by default)", () => {
   it("should return acquired distributed token after successful acquire", async () => {
     const semaphore = new DistributedSemaphore({ maxCount: 1, name: "semaphore1" });
 
-    const token = await semaphore.acquire();
-    assert.ok(token);
-    assert.ok(token.includes(semaphore.name));
+    const releaser = await semaphore.acquire();
 
-    await semaphore.release();
+    const token = releaser.getToken();
+    assert.ok(token);
+    assert.ok(token.includes("semaphore:semaphore1:"));
+
+    await releaser.release();
   });
 });

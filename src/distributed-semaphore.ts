@@ -1,9 +1,9 @@
 import {
-  AcquiredDistributedToken,
-  AcquireParams,
+  AcquireParams, AcquireToken,
   DistributedSemaphoreConstructorProps,
   DistributedSemaphoreFactory,
-  IDistributedSemaphore
+  IDistributedSemaphore,
+  IReleaser
 } from "./types";
 import assert from "node:assert";
 import { InMemoryDistributedSemaphore } from "./in-memory-distributed/in-memory-distributed-semaphore";
@@ -53,12 +53,8 @@ export class DistributedSemaphore implements IDistributedSemaphore {
     return this._implementation.freeCount();
   }
 
-  public async acquire(params?: { timeoutMs?: number; }): Promise<AcquiredDistributedToken> {
-    return this._implementation.acquire(params);
-  }
-
-  public async release(): Promise<void> {
-    return this._implementation.release();
+  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
+    return this._implementation.acquire(params, acquireToken);
   }
 
   public async cancelAll(errMessage?: string): Promise<void> {

@@ -8,16 +8,16 @@ describe("Mutex", () => {
     const mutex = new Mutex();
     assert.strictEqual(await mutex.isLocked(), false);
 
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
     assert.strictEqual(await mutex.isLocked(), true);
 
-    await mutex.release();
+    await releaser.release();
     assert.strictEqual(await mutex.isLocked(), false);
   });
 
   it("should wait for mutex to be available", async () => {
     const mutex = new Mutex();
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
     let acquired = false;
     const acquirePromise = mutex.acquire().then(() => {
@@ -27,14 +27,14 @@ describe("Mutex", () => {
     await sleep(50);
     assert.strictEqual(acquired, false, "Second acquire should be waiting");
 
-    await mutex.release();
+    await releaser.release();
     await acquirePromise;
     assert.strictEqual(acquired, true, "Second acquire should succeed after release");
   });
 
   it("should time out on acquire if mutex is not released", async () => {
     const mutex = new Mutex();
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
     let error: Error | undefined;
     try {
@@ -46,12 +46,12 @@ describe("Mutex", () => {
     assert.ok(error instanceof Error, "Error should be thrown on timeout");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
-    await mutex.release();
+    await releaser.release();
   });
 
   it("should cancel pending acquisitions", async () => {
     const mutex = new Mutex();
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
     let error1: Error | undefined, error2: Error | undefined;
     const p1 = mutex.acquire().catch((err) => { error1 = err; });
@@ -65,15 +65,15 @@ describe("Mutex", () => {
     assert.strictEqual(error1!.message, "Mutex cancelled");
     assert.strictEqual(error2!.message, "Mutex cancelled");
 
-    await mutex.release();
+    await releaser.release();
   });
 
   it("should gracefully handle multiple consecutive release calls", async () => {
     const mutex = new Mutex();
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
-    await mutex.release();
-    await mutex.release();
+    await releaser.release();
+    await releaser.release();
 
     assert.strictEqual(await mutex.isLocked(), false);
   });
@@ -84,13 +84,13 @@ describe("Mutex", () => {
     let maxConcurrent = 0;
 
     const tasks = Array.from({ length: 10 }).map(async () => {
-      await mutex.acquire();
+      const releaser = await mutex.acquire();
       concurrent++;
       maxConcurrent = Math.max(maxConcurrent, concurrent);
       // Simulate asynchronous work.
       await sleep(50);
       concurrent--;
-      await mutex.release();
+      await releaser.release();
     });
 
     await Promise.all(tasks);

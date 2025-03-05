@@ -97,7 +97,7 @@ async function main() {
   const mutex = new Mutex();
 
   // Acquire the mutex
-  await mutex.acquire();
+  const releaser = await mutex.acquire();
 
   try {
     // Critical section:
@@ -105,7 +105,7 @@ async function main() {
     console.log("Local mutex acquired, performing critical operation.");
   } finally {
     // Always release the mutex
-    await mutex.release();
+    await releaser.release();
   }
 }
 
@@ -140,13 +140,13 @@ async function main() {
   const mutex = new Mutex();
 
   // Try to acquire with a timeout
+  const releaser = await mutex.acquire({ timeoutMs: 2000 }); // 2 seconds
   try {
-    await mutex.acquire({ timeoutMs: 2000 }); // 2 seconds
     // Perform exclusive operations
   } catch (error: any) {
     console.error("Failed to acquire mutex:", error.message);
   } finally {
-    await mutex.release();
+    await releaser.release();
   }
 }
 
@@ -180,14 +180,14 @@ async function main() {
   const semaphore = new Semaphore(3);
 
   // Acquire one slot
-  await semaphore.acquire();
+  const releaser = await semaphore.acquire();
 
   try {
     // Perform operations allowed under concurrency limit
     console.log("Local semaphore acquired, performing an operation.");
   } finally {
     // Always release the slot
-    await semaphore.release();
+    await releaser.release();
   }
 }
 
@@ -219,13 +219,14 @@ import { Semaphore } from "@apiratorjs/locking";
 async function main() {
   const semaphore = new Semaphore(2);
 
+  const releaser = await semaphore.acquire({ timeoutMs: 1000 }); // 1 second
+  
   try {
-    await semaphore.acquire({ timeoutMs: 1000 }); // 1 second
     // Perform operation within concurrency limit
   } catch (error: any) {
     console.error("Failed to acquire semaphore:", error.message);
   } finally {
-    await semaphore.release();
+    await releaser.release();
   }
 }
 
@@ -261,10 +262,8 @@ import { DistributedMutex } from "@apiratorjs/locking";
 async function main() {
   // Create a distributed mutex identified by a unique name
   const mutex = new DistributedMutex({ name: "shared-mutex" });
-
-  // Acquire the mutex and its token.
-  // Depending on the implementation, the token may be required to release the mutex, or it may not.
-  const token = await mutex.acquire();
+  
+  const releaser = await mutex.acquire();
 
   try {
     // Exclusive access across the same process or
@@ -272,9 +271,7 @@ async function main() {
     console.log("Distributed mutex acquired, performing critical operation.");
   } finally {
     // Always release the mutex
-    // Depending on the implementation, the token may be required to release the mutex, or it may not.
-    // For distributed in-memory implementation, the token is not required.
-    await mutex.release(token);
+    await releaser.release(token);
   }
 }
 
@@ -304,14 +301,14 @@ import { DistributedMutex } from "@apiratorjs/locking";
 async function main() {
   const mutex = new DistributedMutex({ name: "shared-resource" });
 
+  const releaser = await mutex.acquire({ timeoutMs: 3000 });
+  
   try {
-    // Try to acquire with a 3-second timeout
-    await mutex.acquire({ timeoutMs: 3000 });
     // Perform operations
   } catch (error: any) {
     console.error("Failed to acquire distributed mutex:", error.message);
   } finally {
-    await mutex.release();
+    await releaser.release();
   }
 }
 
@@ -334,19 +331,15 @@ async function main() {
     name: "shared-semaphore",
     maxCount: 3
   });
-
-  // Acquire the semaphore and its token.
-  // Depending on the implementation, the token may be required to release the mutex, or it may not.
-  const token = await semaphore.acquire();
+  
+  const releaser = await semaphore.acquire();
 
   try {
     // Perform operations that can be concurrently accessed up to 3 times
     console.log("Distributed semaphore acquired.");
   } finally {
-    // Always release
-    // Depending on the implementation, the token may be required to release the semaphore slot, or it may not.
-    // For distributed in-memory implementation, the token is not required.
-    await semaphore.release();
+    // Always release the semaphore
+    await releaser.release();
   }
 }
 
@@ -382,14 +375,14 @@ async function main() {
     maxCount: 2
   });
 
+  const releaser = await semaphore.acquire({ timeoutMs: 5000 });
+  
   try {
-    // Acquire with a 5-second timeout
-    await semaphore.acquire({ timeoutMs: 5000 });
     // Perform operations within concurrency limit
   } catch (error: any) {
     console.error("Failed to acquire distributed semaphore:", error.message);
   } finally {
-    await semaphore.release();
+    await releaser.release();
   }
 }
 

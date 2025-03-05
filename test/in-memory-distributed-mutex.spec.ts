@@ -2,6 +2,7 @@ import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert";
 import { sleep } from "./utils";
 import { DistributedMutex, InMemoryDistributedRegistry } from "../src";
+import { IReleaser } from "../src/types";
 
 const DISTRIBUTED_MUTEX_NAME = "mutex1";
 
@@ -14,16 +15,16 @@ describe("DistributedMutex (In Memory by default)", () => {
     const mutex = new DistributedMutex({ name: DISTRIBUTED_MUTEX_NAME });
     assert.strictEqual(await mutex.isLocked(), false);
 
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
     assert.strictEqual(await mutex.isLocked(), true);
 
-    await mutex.release();
+    await releaser.release();
     assert.strictEqual(await mutex.isLocked(), false);
   });
 
   it("should wait for mutex to be available", async () => {
     const mutex = new DistributedMutex({ name: DISTRIBUTED_MUTEX_NAME });
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
     let acquired = false;
     const acquirePromise = mutex.acquire().then(() => {
@@ -33,14 +34,14 @@ describe("DistributedMutex (In Memory by default)", () => {
     await sleep(50);
     assert.strictEqual(acquired, false, "Second acquire should be waiting");
 
-    await mutex.release();
+    await releaser.release();
     await acquirePromise;
     assert.strictEqual(acquired, true, "Second acquire should succeed after release");
   });
 
   it("should time out on acquire if mutex is not released", async () => {
     const mutex = new DistributedMutex({ name: DISTRIBUTED_MUTEX_NAME });
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
     let error: Error | undefined;
     try {
@@ -52,12 +53,12 @@ describe("DistributedMutex (In Memory by default)", () => {
     assert.ok(error instanceof Error, "Error should be thrown on timeout");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
-    await mutex.release();
+    await releaser.release();
   });
 
   it("should cancel pending acquisitions", async () => {
     const mutex = new DistributedMutex({ name: DISTRIBUTED_MUTEX_NAME });
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
     let error1: Error | undefined, error2: Error | undefined;
     const p1 = mutex.acquire().catch((err) => { error1 = err; });
@@ -71,15 +72,15 @@ describe("DistributedMutex (In Memory by default)", () => {
     assert.strictEqual(error1!.message, "Mutex cancelled");
     assert.strictEqual(error2!.message, "Mutex cancelled");
 
-    await mutex.release();
+    await releaser.release();
   });
 
   it("should gracefully handle multiple consecutive release calls", async () => {
     const mutex = new DistributedMutex({ name: DISTRIBUTED_MUTEX_NAME });
-    await mutex.acquire();
+    const releaser = await mutex.acquire();
 
-    await mutex.release();
-    await mutex.release();
+    await releaser.release();
+    await releaser.release();
 
     assert.strictEqual(await mutex.isLocked(), false);
   });
@@ -90,13 +91,13 @@ describe("DistributedMutex (In Memory by default)", () => {
     let maxConcurrent = 0;
 
     const tasks = Array.from({ length: 10 }).map(async () => {
-      await mutex.acquire();
+      const releaser = await mutex.acquire();
       concurrent++;
       maxConcurrent = Math.max(maxConcurrent, concurrent);
       // Simulate asynchronous work.
       await sleep(50);
       concurrent--;
-      await mutex.release();
+      await releaser.release();
     });
 
     await Promise.all(tasks);
@@ -111,26 +112,28 @@ describe("DistributedMutex (In Memory by default)", () => {
     assert.strictEqual(await mutex1.isLocked(), false, "mutex1 should initially be unlocked");
     assert.strictEqual(await mutex2.isLocked(), false, "mutex2 should initially be unlocked");
 
-    await mutex1.acquire();
+    const releaser1 = await mutex1.acquire();
     assert.strictEqual(await mutex1.isLocked(), true, "After mutex1 acquire, mutex1 should be locked");
     assert.strictEqual(await mutex2.isLocked(), true, "After mutex1 acquire, mutex2 should be locked");
 
     let mutex2Acquired = false;
-    const acquirePromise = mutex2.acquire().then(() => {
+    let releaser2: IReleaser;
+    const acquirePromise = mutex2.acquire().then((releaser) => {
+      releaser2 = releaser;
       mutex2Acquired = true;
     });
 
     await sleep(50);
     assert.strictEqual(mutex2Acquired, false, "mutex2 acquire should be pending");
 
-    await mutex1.release();
+    await releaser1.release();
     await acquirePromise;
     assert.strictEqual(mutex2Acquired, true, "mutex2 should acquire after mutex1 releases");
 
     assert.strictEqual(await mutex1.isLocked(), true, "After mutex2 acquired, mutex1 should be locked");
     assert.strictEqual(await mutex2.isLocked(), true, "After mutex2 acquired, mutex2 should be locked");
 
-    await mutex2.release();
+    await releaser2!.release();
     assert.strictEqual(await mutex1.isLocked(), false, "After release, mutex1 should be unlocked");
     assert.strictEqual(await mutex2.isLocked(), false, "After release, mutex2 should be unlocked");
   });
@@ -140,7 +143,7 @@ describe("DistributedMutex (In Memory by default)", () => {
     const mutex1 = new DistributedMutex({ name });
     const mutex2 = new DistributedMutex({ name });
 
-    await mutex1.acquire();
+    const releaser = await mutex1.acquire();
 
     let errorFromMutex2: Error | undefined;
     const pending = mutex2.acquire().catch((err) => { errorFromMutex2 = err; });
@@ -152,7 +155,7 @@ describe("DistributedMutex (In Memory by default)", () => {
     assert.ok(errorFromMutex2 instanceof Error, "Pending acquire should be cancelled with an error");
     assert.strictEqual(errorFromMutex2!.message, "Mutex cancelled");
 
-    await mutex1.release();
+    await releaser.release();
     assert.strictEqual(await mutex1.isLocked(), false, "Mutex should be unlocked after release");
   });
 
@@ -160,8 +163,8 @@ describe("DistributedMutex (In Memory by default)", () => {
     const name = "sharedMutex";
     const mutex = new DistributedMutex({ name });
 
-    await mutex.acquire();
-    await mutex.release();
+    const releaser = await mutex.acquire();
+    await releaser.release();
     assert.strictEqual(await mutex.isLocked(), false);
 
     await mutex.destroy();
@@ -179,10 +182,12 @@ describe("DistributedMutex (In Memory by default)", () => {
   it("should return acquired distributed token after successful acquire", async () => {
     const mutex = new DistributedMutex({ name: "semaphore1" });
 
-    const token = await mutex.acquire();
-    assert.ok(token);
-    assert.ok(token.includes(mutex.name));
+    const releaser = await mutex.acquire();
 
-    await mutex.release();
+    const token = releaser.getToken();
+    assert.ok(token);
+    assert.ok(token.includes("mutex:semaphore1:"));
+
+    await releaser.release();
   });
 });

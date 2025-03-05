@@ -1,9 +1,10 @@
 import {
-  AcquiredDistributedToken,
   AcquireParams,
+  AcquireToken,
   DistributedMutexConstructorProps,
   DistributedMutexFactory,
-  IDistributedMutex
+  IDistributedMutex,
+  IReleaser
 } from "./types";
 import { InMemoryDistributedMutex } from "./in-memory-distributed/in-memory-distributed-mutex";
 import assert from "node:assert";
@@ -43,12 +44,8 @@ export class DistributedMutex implements IDistributedMutex {
     return this._implementation.implementation;
   }
 
-  public async acquire(params?: { timeoutMs?: number; }): Promise<AcquiredDistributedToken> {
-    return this._implementation.acquire(params);
-  }
-
-  public async release(): Promise<void> {
-    return this._implementation.release();
+  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
+    return this._implementation.acquire(params, acquireToken);
   }
 
   public async cancel(errMessage?: string): Promise<void> {

@@ -1,6 +1,7 @@
-import { AcquiredDistributedToken, AcquireParams, DistributedMutexConstructorProps, IDistributedMutex } from "../types";
+import { AcquireParams, AcquireToken, DistributedMutexConstructorProps, IDistributedMutex, IReleaser } from "../types";
 import { InMemoryDistributedSemaphore } from "./in-memory-distributed-semaphore";
 import { inMemoryDistributedMutexRegistry } from "./in-memory-distributed-registry";
+import crypto from "node:crypto";
 
 export class InMemoryDistributedMutex implements IDistributedMutex {
   private readonly _inMemoryDistributedSemaphore: InMemoryDistributedSemaphore;
@@ -37,12 +38,9 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
     return this._inMemoryDistributedSemaphore.destroy();
   }
 
-  public acquire(params?: { timeoutMs?: number; }): Promise<AcquiredDistributedToken> {
-    return this._inMemoryDistributedSemaphore.acquire(params);
-  }
-
-  public release(): Promise<void> {
-    return this._inMemoryDistributedSemaphore.release();
+  public acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
+    const token = `${this.name}:${crypto.randomUUID()}`;
+    return this._inMemoryDistributedSemaphore.acquire(params, acquireToken ?? token);
   }
 
   public cancel(errMessage?: string): Promise<void> {

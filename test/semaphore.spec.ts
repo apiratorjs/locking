@@ -9,18 +9,18 @@ describe("Semaphore", () => {
     assert.strictEqual(await semaphore.isLocked(), false);
     assert.strictEqual(await semaphore.freeCount(), 1);
 
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
     assert.strictEqual(await semaphore.isLocked(), true);
     assert.strictEqual(await semaphore.freeCount(), 0);
 
-    await semaphore.release();
+    await releaser.release();
     assert.strictEqual(await semaphore.isLocked(), false);
     assert.strictEqual(await semaphore.freeCount(), 1);
   });
 
   it("should wait for semaphore to be available", async () => {
     const semaphore = new Semaphore(1);
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
 
     let acquired = false;
     const acquirePromise = semaphore.acquire().then(() => {
@@ -30,14 +30,14 @@ describe("Semaphore", () => {
     await sleep(50);
     assert.strictEqual(acquired, false, "Second acquire should be waiting");
 
-    await semaphore.release();
+    await releaser.release();
     await acquirePromise;
     assert.strictEqual(acquired, true, "Second acquire should succeed after release");
   });
 
   it("should time out on acquire if semaphore is not released", async () => {
     const semaphore = new Semaphore(1);
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
 
     let error: Error | undefined;
     try {
@@ -49,12 +49,12 @@ describe("Semaphore", () => {
     assert.ok(error instanceof Error, "Error should be thrown on timeout");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
-    await semaphore.release();
+    await releaser.release();
   });
 
   it("should cancel all pending acquisitions", async () => {
     const semaphore = new Semaphore(1);
-    await semaphore.acquire();
+    const releaser = await semaphore.acquire();
 
     let error1: Error | undefined, error2: Error | undefined;
     const p1 = semaphore.acquire().catch((err) => { error1 = err; });
@@ -70,21 +70,21 @@ describe("Semaphore", () => {
     assert.strictEqual(error1!.message, "Semaphore cancelled");
     assert.strictEqual(error2!.message, "Semaphore cancelled");
 
-    await semaphore.release();
+    await releaser.release();
   });
 
   it("should not increase freeCount beyond maxCount on over-release", async () => {
     const semaphore = new Semaphore(2);
 
-    await semaphore.acquire();
-    await semaphore.acquire();
+    const releaser1 = await semaphore.acquire();
+    const releaser2 = await semaphore.acquire();
 
-    await semaphore.release();
-    await semaphore.release();
+    await releaser1.release();
+    await releaser2.release();
 
     assert.strictEqual(await semaphore.isLocked(), false);
 
-    await semaphore.release();
+    await releaser2.release();
     assert.strictEqual(await semaphore.isLocked(), false);
   });
 
@@ -94,13 +94,13 @@ describe("Semaphore", () => {
     let maxConcurrent = 0;
 
     const tasks = Array.from({ length: 10 }).map(async () => {
-      await semaphore.acquire();
+      const releaser = await semaphore.acquire();
       concurrent++;
       maxConcurrent = Math.max(maxConcurrent, concurrent);
       // Simulate asynchronous work.
       await sleep(50);
       concurrent--;
-      await semaphore.release();
+      await releaser.release();
     });
 
     await Promise.all(tasks);
