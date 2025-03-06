@@ -1,6 +1,6 @@
 {
   "name": "@apiratorjs/locking",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "A lightweight library providing both local and distributed locking primitives (mutexes and semaphores) for managing concurrency in Node.js.",
   "author": {
     "name": "Oleksii Zaitsev",
@@ -39,7 +39,8 @@
   "scripts": {
     "build": "rm -rf dist && tsc",
     "watch": "tsc --watch",
-    "test": "node --test dist/test"
+    "test": "node --test dist/test",
+    "prepublishOnly": "npm run build && npm test"
   },
   "engines": {
     "node": ">=16.4.0"
