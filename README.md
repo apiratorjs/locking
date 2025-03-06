@@ -91,6 +91,8 @@ yarn add @apiratorjs/locking
 
 ## Usage
 
+> Both Mutex and Semaphore (including their distributed versions) have a default acquire timeout of 1 minute.
+
 ### Local Mutex
 
 A mutex allows only one active holder at a time, enforcing exclusive access to a resource:
@@ -412,6 +414,20 @@ main();
 
 ---
 
+### Cancellation
+
+You can cancel all pending waits for either a Semaphore or a Mutex (and their distributed versions) by calling:
+
+```typescript
+await semaphore.cancelAll("Custom error message");
+// or
+await mutex.cancel("Custom error message");
+```
+
+Any callers waiting to acquire will receive a rejection with the provided message.
+
+---
+
 ### Switching to a Real Distributed Backend
 
 By default, `DistributedMutex` and `DistributedSemaphore` use an in-memory store. This does not provide real
@@ -450,7 +466,9 @@ import { createRedisLockFactory } from "@apiratorjs/locking-redis";
 })();
 ```
 
-## Own implementation of a distributed backend
+---
+
+### Own implementation of a distributed backend
 
 You can also implement your own distributed backend by implementing the `IDistributedSemaphore`, `IDistributedMutex`,
 `DistributedSemaphoreFactory`, `DistributedMutexFactory` interfaces. And apply them:
@@ -460,20 +478,6 @@ DistributedMutex.factory = (props: DistributedMutexConstructorProps) => IDistrib
 
 DistributedSemaphore.factory = (props: DistributedSemaphoreConstructorProps) => IDistributedSemaphore;
 ````
-
----
-
-### Cancellation
-
-You can cancel all pending waits for either a Semaphore or a Mutex (and their distributed versions) by calling:
-
-```typescript
-await semaphore.cancelAll("Custom error message");
-// or
-await mutex.cancel("Custom error message");
-```
-
-Any callers waiting to acquire will receive a rejection with the provided message.
 
 ---
 
