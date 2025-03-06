@@ -14,22 +14,25 @@ multi-instance environments, it supports (via additional packages) distributed l
 ## What Are Mutexes and Semaphores?
 
 - **Mutex**
-  - A mutex (short for “mutual exclusion”) ensures only one operation or task can access a resource at any time.
-  - Once acquired by a task, other tasks must wait until it is released.
-  - Real-life analogy: A bathroom key in a small office. If one person is using the bathroom (has the key), no one else can enter until the key is returned.
+    - A mutex (short for “mutual exclusion”) ensures only one operation or task can access a resource at any time.
+    - Once acquired by a task, other tasks must wait until it is released.
+    - Real-life analogy: A bathroom key in a small office. If one person is using the bathroom (has the key), no one
+      else can enter until the key is returned.
 
 - **When to use a Mutex**
-  - Whenever you need exclusive access to a shared resource.
-  - For example, updating a single record in a file or database so that no two processes modify it at the same time.
+    - Whenever you need exclusive access to a shared resource.
+    - For example, updating a single record in a file or database so that no two processes modify it at the same time.
 
 
 - **Semaphore**
-  - A semaphore manages access to a resource by keeping track of a certain number of “permits.” A task must acquire a permit before it can proceed, and releases a permit when finished.
-  - Semaphores allow multiple concurrent holders (up to a limit), rather than just one.
-  - Real-life analogy: A parking garage with a limited number of parking spots. Each car must find an available spot (permit) to park, and if the garage is full, incoming cars must wait for someone to leave.
+    - A semaphore manages access to a resource by keeping track of a certain number of “permits.” A task must acquire a
+      permit before it can proceed, and releases a permit when finished.
+    - Semaphores allow multiple concurrent holders (up to a limit), rather than just one.
+    - Real-life analogy: A parking garage with a limited number of parking spots. Each car must find an available spot (
+      permit) to park, and if the garage is full, incoming cars must wait for someone to leave.
 - **When to use a Semaphore**
-  - Whenever you need to limit concurrency to a fixed number.
-  - For example, limiting the number of simultaneous API requests or controlling concurrency in a task queue.
+    - Whenever you need to limit concurrency to a fixed number.
+    - For example, limiting the number of simultaneous API requests or controlling concurrency in a task queue.
 
 ---
 
@@ -52,13 +55,15 @@ multi-instance environments, it supports (via additional packages) distributed l
 - **Distributed Mutex**
     - Similar API to the local Mutex.
     - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
+    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming
+      soon))
       to enable cross-process or multi-instance distributed locking with Redis.
 
 - **Distributed Semaphore**
     - Similar API to the local Semaphore.
     - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
+    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming
+      soon))
       to enable cross-process or multi-instance distributed locking with Redis.
 
 ### General
@@ -134,19 +139,21 @@ A mutex can wait for a specified duration to acquire the lock before throwing an
 You can also specify a timeout in milliseconds:
 
 ```typescript
-import { Mutex } from "@apiratorjs/locking";
+import { Mutex, types } from "@apiratorjs/locking";
 
 async function main() {
   const mutex = new Mutex();
 
   // Try to acquire with a timeout
-  const releaser = await mutex.acquire({ timeoutMs: 2000 }); // 2 seconds
+  let releaser: types.IReleaser;
+
   try {
+    releaser = await mutex.acquire({ timeoutMs: 2000 }); // 2 seconds
     // Perform exclusive operations
   } catch (error: any) {
     console.error("Failed to acquire mutex:", error.message);
   } finally {
-    await releaser.release();
+    await releaser?.release();
   }
 }
 
@@ -159,12 +166,16 @@ import { Mutex } from "@apiratorjs/locking";
 (async () => {
   const mutex = new Mutex();
 
-  const result = await mutex.runExclusive({ timeoutMs: 2000 }, async () => {
-    console.log("Local mutex locked automatically.");
-    return 42;
-  });
+  try {
+    const result = await mutex.runExclusive({ timeoutMs: 2000 }, async () => {
+      console.log("Local mutex locked automatically.");
+      return 42;
+    });
+  } catch (error: any) {
+    console.error("Failed to acquire mutex:", error.message);
+  }
 
-  console.log("Lock was released automatically. Result =", result);
+  console.log("Lock was released automatically.");
 })();
 ```
 
@@ -173,21 +184,21 @@ import { Mutex } from "@apiratorjs/locking";
 A semaphore allows you to limit concurrent access by a specified count:
 
 ```typescript
-import { Semaphore } from "@apiratorjs/locking";
+import { Semaphore, types } from "@apiratorjs/locking";
 
 async function main() {
   // Create a semaphore with a max of 3 concurrent holders
   const semaphore = new Semaphore(3);
 
   // Acquire one slot
-  const releaser = await semaphore.acquire();
+  let releaser: types.IReleaser;
 
   try {
+    releaser = await semaphore.acquire();
     // Perform operations allowed under concurrency limit
-    console.log("Local semaphore acquired, performing an operation.");
   } finally {
     // Always release the slot
-    await releaser.release();
+    await releaser?.release();
   }
 }
 
@@ -214,19 +225,21 @@ Timeouts
 Similarly, you can set a timeout for semaphore acquisition:
 
 ```typescript
-import { Semaphore } from "@apiratorjs/locking";
+import { Semaphore, types } from "@apiratorjs/locking";
 
 async function main() {
   const semaphore = new Semaphore(2);
 
-  const releaser = await semaphore.acquire({ timeoutMs: 1000 }); // 1 second
-  
+  let releaser: types.IReleaser;
+
   try {
+    releaser = await semaphore.acquire({ timeoutMs: 1000 }); // 1 second
     // Perform operation within concurrency limit
   } catch (error: any) {
     console.error("Failed to acquire semaphore:", error.message);
   } finally {
-    await releaser.release();
+    // Always release the slot
+    await releaser?.release();
   }
 }
 
@@ -239,12 +252,16 @@ import { Semaphore } from "@apiratorjs/locking";
 (async () => {
   const semaphore = new Semaphore(3);
 
-  const data = await semaphore.runExclusive({ timeoutMs: 1000 }, async () => {
-    console.log("Acquired one of the semaphore slots automatically.");
-    return "Some data";
-  });
+  try {
+    const data = await semaphore.runExclusive({ timeoutMs: 1000 }, async () => {
+      console.log("Acquired one of the semaphore slots automatically.");
+      return "Some data";
+    });
+  } catch (err: any) {
+    console.error("Failed to acquire semaphore slot:", error.message);
+  }
 
-  console.log("Semaphore slot released automatically. Data =", data);
+  console.log("Semaphore slot released automatically.");
 })();
 ```
 
@@ -254,18 +271,19 @@ A distributed mutex (by default in this package) uses an in-memory store. This w
 e.g., multiple modules in the same process can share the same name).
 
 > Important: For multi-process or multi-instance environments, use additional backend-specific packages (
-> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis)).
+> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming soon)).
 
 ```typescript
-import { DistributedMutex } from "@apiratorjs/locking";
+import { DistributedMutex, types } from "@apiratorjs/locking";
 
 async function main() {
   // Create a distributed mutex identified by a unique name
   const mutex = new DistributedMutex({ name: "shared-mutex" });
-  
-  const releaser = await mutex.acquire();
+
+  let releaser: types.IReleaser;
 
   try {
+    releaser = await mutex.acquire();
     // Exclusive access across the same process or
     // (with an alternate backend) across multiple processes
     console.log("Distributed mutex acquired, performing critical operation.");
@@ -296,19 +314,20 @@ import { DistributedMutex } from "@apiratorjs/locking";
 Timeouts
 
 ```typescript
-import { DistributedMutex } from "@apiratorjs/locking";
+import { DistributedMutex, types } from "@apiratorjs/locking";
 
 async function main() {
   const mutex = new DistributedMutex({ name: "shared-resource" });
 
-  const releaser = await mutex.acquire({ timeoutMs: 3000 });
-  
+  let releaser: types.IReleaser;
+
   try {
+    releaser = await mutex.acquire({ timeoutMs: 3000 });
     // Perform operations
   } catch (error: any) {
     console.error("Failed to acquire distributed mutex:", error.message);
   } finally {
-    await releaser.release();
+    await releaser?.release();
   }
 }
 
@@ -320,10 +339,10 @@ main();
 A distributed semaphore (by default, also in memory for this package) allows a specified maximum number of holders.
 
 > Important: For multi-process or multi-instance environments, use additional backend-specific packages (
-> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis)).
+> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming soon)).
 
 ```typescript
-import { DistributedSemaphore } from "@apiratorjs/locking";
+import { DistributedSemaphore, types } from "@apiratorjs/locking";
 
 async function main() {
   // Create a distributed semaphore with max 3 concurrent holders
@@ -331,15 +350,16 @@ async function main() {
     name: "shared-semaphore",
     maxCount: 3
   });
-  
-  const releaser = await semaphore.acquire();
+
+  let releaser: types.IReleaser;
 
   try {
+    releaser = await semaphore.acquire();
     // Perform operations that can be concurrently accessed up to 3 times
     console.log("Distributed semaphore acquired.");
   } finally {
     // Always release the semaphore
-    await releaser.release();
+    await releaser?.release();
   }
 }
 
@@ -367,7 +387,7 @@ import { DistributedSemaphore } from "@apiratorjs/locking";
 Timeouts
 
 ```typescript
-import { DistributedSemaphore } from "@apiratorjs/locking";
+import { DistributedSemaphore, types } from "@apiratorjs/locking";
 
 async function main() {
   const semaphore = new DistributedSemaphore({
@@ -375,14 +395,15 @@ async function main() {
     maxCount: 2
   });
 
-  const releaser = await semaphore.acquire({ timeoutMs: 5000 });
-  
+  let releaser: types.IReleaser;
+
   try {
+    releaser = await semaphore.acquire({ timeoutMs: 5000 });
     // Perform operations within concurrency limit
   } catch (error: any) {
     console.error("Failed to acquire distributed semaphore:", error.message);
   } finally {
-    await releaser.release();
+    await releaser?.release();
   }
 }
 
@@ -397,7 +418,7 @@ By default, `DistributedMutex` and `DistributedSemaphore` use an in-memory store
 cross-process synchronization if you run multiple Node.js processes or servers.
 
 If you need actual distributed locking, install an additional package such
-as [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis), which plugs into this library
+as [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming soon), which plugs into this library
 to enable Redis-based locking primitives. You would then configure the `DistributedMutex.factory` or
 `DistributedSemaphore.factory` to use the Redis-based constructor, for example:
 
@@ -407,7 +428,7 @@ import { createRedisLockFactory } from "@apiratorjs/locking-redis";
 
 (async () => {
   const lockFactory = await createRedisLockFactory({ url: "redis://localhost:6379" });
-  
+
   DistributedSemaphore.factory = lockFactory.createDistributedSemaphore;
 
   // Now all new DistributedSemaphore instances use Redis for synchronization
@@ -421,13 +442,24 @@ import { createRedisLockFactory } from "@apiratorjs/locking-redis";
 
 (async () => {
   const lockFactory = await createRedisLockFactory({ url: "redis://localhost:6379" });
-  
+
   DistributedMutex.factory = lockFactory.createDistributedMutex;
 
   // Now all new DistributedMutex instances use Redis for synchronization
   const mutex = new DistributedMutex({ name: "shared-name" });
 })();
 ```
+
+## Own implementation of a distributed backend
+
+You can also implement your own distributed backend by implementing the `IDistributedSemaphore`, `IDistributedMutex`,
+`DistributedSemaphoreFactory`, `DistributedMutexFactory` interfaces. And apply them:
+
+```typescript
+DistributedMutex.factory = (props: DistributedMutexConstructorProps) => IDistributedMutex;
+
+DistributedSemaphore.factory = (props: DistributedSemaphoreConstructorProps) => IDistributedSemaphore;
+````
 
 ---
 
