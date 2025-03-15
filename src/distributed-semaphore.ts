@@ -1,5 +1,5 @@
 import {
-  AcquireParams, AcquireToken,
+  AcquireParams,
   DistributedSemaphoreConstructorProps,
   DistributedSemaphoreFactory,
   IDistributedSemaphore,
@@ -53,8 +53,8 @@ export class DistributedSemaphore implements IDistributedSemaphore {
     return this._implementation.freeCount();
   }
 
-  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
-    return this._implementation.acquire(params, acquireToken);
+  public async acquire(params?: { timeoutMs?: number; }): Promise<IReleaser> {
+    return this._implementation.acquire(params);
   }
 
   public async cancelAll(errMessage?: string): Promise<void> {

@@ -13,7 +13,7 @@ export interface ISemaphore {
 
   freeCount(): Promise<number>;
 
-  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
+  acquire(params?: AcquireParams): Promise<IReleaser>;
 
   cancelAll(errMessage?: string): Promise<void>;
 
@@ -25,7 +25,7 @@ export interface ISemaphore {
 }
 
 export interface IMutex {
-  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
+  acquire(params?: AcquireParams): Promise<IReleaser>;
 
   cancel(errMessage?: string): Promise<void>;
 
@@ -53,7 +53,7 @@ export interface IDistributedSemaphore extends Omit<ISemaphore, "acquire"> {
 
   isDestroyed: boolean;
 
-  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
+  acquire(params?: AcquireParams): Promise<IReleaser>;
 }
 
 export interface IDistributedMutex extends Omit<IMutex, "acquire"> {
@@ -65,7 +65,7 @@ export interface IDistributedMutex extends Omit<IMutex, "acquire"> {
 
   isDestroyed: boolean;
 
-  acquire(params?: AcquireParams, acquireToken?: AcquireToken): Promise<IReleaser>;
+  acquire(params?: AcquireParams): Promise<IReleaser>;
 }
 
 export type DistributedSemaphoreConstructorProps = {

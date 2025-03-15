@@ -55,15 +55,13 @@ multi-instance environments, it supports (via additional packages) distributed l
 - **Distributed Mutex**
     - Similar API to the local Mutex.
     - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming
-      soon))
+    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
       to enable cross-process or multi-instance distributed locking with Redis.
 
 - **Distributed Semaphore**
     - Similar API to the local Semaphore.
     - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming
-      soon))
+    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
       to enable cross-process or multi-instance distributed locking with Redis.
 
 ### General
@@ -273,7 +271,7 @@ A distributed mutex (by default in this package) uses an in-memory store. This w
 e.g., multiple modules in the same process can share the same name).
 
 > Important: For multi-process or multi-instance environments, use additional backend-specific packages (
-> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming soon)).
+> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis)).
 
 ```typescript
 import { DistributedMutex, types } from "@apiratorjs/locking";
@@ -341,7 +339,7 @@ main();
 A distributed semaphore (by default, also in memory for this package) allows a specified maximum number of holders.
 
 > Important: For multi-process or multi-instance environments, use additional backend-specific packages (
-> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (coming soon)).
+> e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis)).
 
 ```typescript
 import { DistributedSemaphore, types } from "@apiratorjs/locking";

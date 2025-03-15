@@ -1,6 +1,5 @@
 import {
   AcquireParams,
-  AcquireToken,
   DistributedMutexConstructorProps,
   DistributedMutexFactory,
   IDistributedMutex,
@@ -44,8 +43,8 @@ export class DistributedMutex implements IDistributedMutex {
     return this._implementation.implementation;
   }
 
-  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
-    return this._implementation.acquire(params, acquireToken);
+  public async acquire(params?: { timeoutMs?: number; }): Promise<IReleaser> {
+    return this._implementation.acquire(params);
   }
 
   public async cancel(errMessage?: string): Promise<void> {
