@@ -35,7 +35,7 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
   public readonly implementation: string = "in-memory";
 
   public async destroy(): Promise<void> {
-    return this._inMemoryDistributedSemaphore.destroy();
+    return this._inMemoryDistributedSemaphore.destroy("Mutex destroyed");
   }
 
   public acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {

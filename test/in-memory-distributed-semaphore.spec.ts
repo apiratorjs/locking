@@ -182,7 +182,7 @@ describe("DistributedSemaphore (In Memory by default)", () => {
 
     await assert.rejects(
       async () => semaphore.acquire(),
-      /has been destroyed/,
+      /does not exist/,
       "Acquiring after destroy should throw an error"
     );
   });
@@ -197,5 +197,37 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     assert.ok(token.includes("semaphore:semaphore1:"));
 
     await releaser.release();
+  });
+
+  it("should remove the lock and reject waiters when destroy is called while locked", async () => {
+    const semaphore = new DistributedSemaphore({ maxCount: 1, name: "semaphore1" });
+
+    assert.ok(await semaphore.freeCount() === 1, "Initial freeCount should be 1");
+
+    const releaser = await semaphore.acquire();
+
+    assert.ok(await semaphore.freeCount() === 0, "After acquire, freeCount should be 0");
+
+    const semaphore2 = new DistributedSemaphore({ maxCount: 1, name: "semaphore1" });
+
+    assert.ok(await semaphore2.freeCount() === 0, "New semaphore with the same name should not have free count");
+
+    let semaphore2Acquired = false;
+    const p = semaphore2.acquire().then(() => {
+      semaphore2Acquired = true;
+    });
+
+    await semaphore.destroy();
+
+    let pError: Error | undefined;
+    try {
+      await p;
+    } catch (err: any) {
+      pError = err;
+    }
+
+    assert.ok(pError, "Second semaphore should be rejected");
+    assert.ok(pError!.message === "Semaphore destroyed", "Error message should be 'Semaphore destroyed'");
+    assert.ok(!semaphore2Acquired, "Second semaphore should not be acquired");
   });
 });

@@ -22,7 +22,9 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     this.maxCount = props.maxCount;
     this.name = `${_type}:${props.name}`;
 
-    this._registry.set(this.name, new Semaphore(this.maxCount));
+    if (!this._registry.has(this.name)) {
+      this._registry.set(this.name, new Semaphore(this.maxCount));
+    }
   }
 
   get isDestroyed() {
@@ -50,9 +52,11 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     }
   }
 
-  public async destroy(): Promise<void> {
+  public async destroy(message?: string): Promise<void> {
+    const semaphore = this.getSemaphoreOrException();
     this._isDestroyed = true;
     this._registry.delete(this.name);
+    await semaphore.cancelAll(message ?? "Semaphore destroyed");
   }
 
   public readonly implementation: string = "in-memory";
@@ -75,10 +79,6 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
   }
 
   private getSemaphoreOrException(): Semaphore {
-    if (this._isDestroyed) {
-      throw new Error(`${this._type} '${this.name}' has been destroyed`);
-    }
-
     const semaphore = this._registry.get(this.name);
     if (!semaphore) {
       throw new Error(`${this._type} '${this.name}' does not exist`);

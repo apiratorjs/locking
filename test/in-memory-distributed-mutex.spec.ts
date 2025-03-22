@@ -174,7 +174,7 @@ describe("DistributedMutex (In Memory by default)", () => {
 
     await assert.rejects(
       async () => mutex.acquire(),
-      /has been destroyed/,
+      /does not exist/,
       "Acquiring after destroy should throw an error"
     );
   });
@@ -189,5 +189,31 @@ describe("DistributedMutex (In Memory by default)", () => {
     assert.ok(token.includes("mutex:semaphore1:"));
 
     await releaser.release();
+  });
+
+  it("should remove the lock and reject waiters when destroy is called while locked", async () => {
+    const mutex = new DistributedMutex({ name: "semaphore1" });
+
+    const releaser = await mutex.acquire();
+
+    const mutex2 = new DistributedMutex({ name: "semaphore1" });
+
+    let semaphore2Acquired = false;
+    const p = mutex2.acquire().then(() => {
+      semaphore2Acquired = true;
+    });
+
+    await mutex.destroy();
+
+    let pError: Error | undefined;
+    try {
+      await p;
+    } catch (err: any) {
+      pError = err;
+    }
+
+    assert.ok(pError, "Second mutex should be rejected");
+    assert.ok(pError!.message === "Mutex destroyed", "Error message should be 'Mutex destroyed'");
+    assert.ok(!semaphore2Acquired, "Second mutex should not be acquired");
   });
 });
