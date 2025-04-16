@@ -1,10 +1,10 @@
 import crypto from "node:crypto";
 import {
   AcquireParams,
-  AcquireToken,
   DistributedSemaphoreConstructorProps,
   IDistributedSemaphore,
-  IReleaser
+  IReleaser,
+  SemaphoreToken
 } from "../types";
 import { Semaphore } from "../semaphore";
 
@@ -65,8 +65,10 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     return this.getSemaphoreOrException().freeCount();
   }
 
-  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
-    const token = `${this.name}:${crypto.randomUUID()}`;
+  public async acquire(params?: {
+    timeoutMs?: number;
+  }, acquireToken?: SemaphoreToken): Promise<IReleaser<SemaphoreToken>> {
+    const token = `${this.name}:${crypto.randomUUID()}` as SemaphoreToken;
     return this.getSemaphoreOrException().acquire(params, acquireToken ?? token);
   }
 

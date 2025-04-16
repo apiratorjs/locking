@@ -3,7 +3,8 @@ import {
   DistributedSemaphoreConstructorProps,
   DistributedSemaphoreFactory,
   IDistributedSemaphore,
-  IReleaser
+  IReleaser,
+  SemaphoreToken
 } from "./types";
 import assert from "node:assert";
 import { InMemoryDistributedSemaphore } from "./in-memory-distributed/in-memory-distributed-semaphore";
@@ -53,7 +54,7 @@ export class DistributedSemaphore implements IDistributedSemaphore {
     return this._implementation.freeCount();
   }
 
-  public async acquire(params?: { timeoutMs?: number; }): Promise<IReleaser> {
+  public async acquire(params?: { timeoutMs?: number; }): Promise<IReleaser<SemaphoreToken>> {
     return this._implementation.acquire(params);
   }
 

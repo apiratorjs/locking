@@ -1,19 +1,19 @@
 import assert from "node:assert";
 import crypto from "node:crypto";
-import { AcquireToken, AcquireParams, IDeferred, IReleaser, ISemaphore } from "./types";
+import { AcquireParams, IDeferred, IReleaser, ISemaphore, SemaphoreToken } from "./types";
 import { DEFAULT_TIMEOUT_IN_MS } from "./constants";
 
-class Releaser implements IReleaser {
+class Releaser implements IReleaser<SemaphoreToken> {
   constructor(
     private readonly _onRelease: () => Promise<void>,
-    private readonly _token: AcquireToken
+    private readonly _token: SemaphoreToken
   ) {}
 
   public async release(): Promise<void> {
     await this._onRelease();
   }
 
-  public getToken(): AcquireToken {
+  public getToken(): SemaphoreToken {
     return this._token;
   }
 }
@@ -57,17 +57,18 @@ export class Semaphore implements ISemaphore {
     return this._freeCount;
   }
 
-  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
+  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: string): Promise<IReleaser<SemaphoreToken>> {
     const timeoutMs = params?.timeoutMs || DEFAULT_TIMEOUT_IN_MS;
 
-    const releaser = new Releaser(this.release.bind(this), acquireToken ?? crypto.randomUUID());
+    const token = (acquireToken ?? crypto.randomUUID()) as SemaphoreToken;
+    const releaser = new Releaser(this.release.bind(this), token);
 
     if (this._freeCount > 0) {
       this._freeCount--;
       return releaser;
     }
 
-    return new Promise<IReleaser>((resolve, reject) => {
+    return new Promise<IReleaser<SemaphoreToken>>((resolve, reject) => {
       const deferred: IDeferred = {
         resolve: () => resolve(releaser),
         reject,

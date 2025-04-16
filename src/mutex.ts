@@ -1,5 +1,5 @@
 import { Semaphore } from "./semaphore";
-import { AcquireParams, AcquireToken, IMutex, IReleaser } from "./types";
+import { AcquireParams, IMutex, IReleaser, MutexToken } from "./types";
 
 export class Mutex implements IMutex {
   private readonly _semaphore: Semaphore;
@@ -15,8 +15,14 @@ export class Mutex implements IMutex {
     return this._semaphore.runExclusive<T>(...args);
   }
 
-  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: AcquireToken): Promise<IReleaser> {
-    return this._semaphore.acquire(params, acquireToken);
+  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: string): Promise<IReleaser<MutexToken>> {
+    // Cast SemaphoreToken to MutexToken since we're implementing a mutex interface
+    const releaser = await this._semaphore.acquire(params, acquireToken);
+    const wrappedReleaser: IReleaser<MutexToken> = {
+      release: async () => releaser.release(),
+      getToken: () => releaser.getToken() as unknown as MutexToken
+    };
+    return wrappedReleaser;
   }
 
   public async cancel(errMessage?: string): Promise<void> {
