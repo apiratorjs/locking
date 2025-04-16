@@ -173,4 +173,75 @@ describe("Semaphore", () => {
     await Promise.all(tasks);
     assert.ok(maxConcurrent <= 2, "Should respect concurrency limit of 2");
   });
+
+  it("should wait for the semaphore to be unlocked", async () => {
+    const semaphore = new Semaphore(1);
+    const releaser = await semaphore.acquire();
+
+    assert.strictEqual(await semaphore.isLocked(), true, "Semaphore should be locked");
+
+    setTimeout(() => {
+      releaser.release();
+    }, 100);
+
+    assert.strictEqual(await semaphore.isLocked(), true, "Semaphore should be locked")
+
+    await semaphore.waitForAnyUnlock();
+
+    assert.strictEqual(await semaphore.isLocked(), false, "Semaphore should be unlocked");
+  });
+
+  it("should wait for the semaphore to be unlocked of first 3 slots of 5", async () => {
+    const semaphore = new Semaphore(5);
+    const releaser = await semaphore.acquire();
+    const releaser2 = await semaphore.acquire();
+    const releaser3 = await semaphore.acquire();
+    const releaser4 = await semaphore.acquire();
+    const releaser5 = await semaphore.acquire();
+
+    assert.strictEqual(await semaphore.isLocked(), true, "Semaphore should be locked");
+    assert.strictEqual(await semaphore.freeCount(), 0, "Semaphore should have no free slots");
+
+    setTimeout(() => {
+      releaser.release();
+      releaser2.release();
+      releaser3.release();
+    }, 100);
+
+    setTimeout(() => {
+      releaser4.release();
+      releaser5.release();
+    }, 200);
+
+    await semaphore.waitForAnyUnlock();
+
+    assert.strictEqual(await semaphore.freeCount(), 3, "Semaphore should have 3 slots free");
+  });
+
+  it("should wait for the semaphore to be fully unlocked", async () => {
+    const semaphore = new Semaphore(5);
+    const releaser = await semaphore.acquire();
+    const releaser2 = await semaphore.acquire();
+    const releaser3 = await semaphore.acquire();
+    const releaser4 = await semaphore.acquire();
+    const releaser5 = await semaphore.acquire();
+
+    assert.strictEqual(await semaphore.isLocked(), true, "Semaphore should be locked");
+    assert.strictEqual(await semaphore.freeCount(), 0, "Semaphore should have no free slots");
+
+    setTimeout(() => {
+      releaser.release();
+      releaser2.release();
+      releaser3.release();
+    }, 100);
+
+    setTimeout(() => {
+      releaser4.release();
+      releaser5.release();
+    }, 200);
+
+    await semaphore.waitForFullyUnlock();
+
+    assert.strictEqual(await semaphore.freeCount(), 5, "Semaphore should have 3 slots free");
+  });
 });

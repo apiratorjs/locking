@@ -23,6 +23,8 @@ export class Semaphore implements ISemaphore {
 
   private _freeCount: number;
   private _queue: IDeferred[];
+  private _waitingForAnyUnlockListeners: IDeferred[];
+  private _waitingForFullyUnlockListeners: IDeferred[];
 
   public constructor(maxCount: number) {
     assert.ok(maxCount > 0, "maxCount must be greater than 0");
@@ -30,6 +32,34 @@ export class Semaphore implements ISemaphore {
     this.maxCount = maxCount;
     this._freeCount = maxCount;
     this._queue = [];
+    this._waitingForAnyUnlockListeners = [];
+    this._waitingForFullyUnlockListeners = [];
+  }
+
+  public async waitForFullyUnlock(): Promise<void> {
+    if (this.maxCount === this._freeCount) {
+      return;
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      this._waitingForFullyUnlockListeners.push({
+        resolve,
+        reject
+      });
+    });
+  }
+
+  public async waitForAnyUnlock(): Promise<void> {
+    if (this._freeCount > 0) {
+      return;
+    }
+
+    return new Promise<void>((resolve, reject) => {
+      this._waitingForAnyUnlockListeners.push({
+        resolve,
+        reject
+      });
+    });
   }
 
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
@@ -69,13 +99,7 @@ export class Semaphore implements ISemaphore {
     }
 
     return new Promise<IReleaser<SemaphoreToken>>((resolve, reject) => {
-      const deferred: IDeferred = {
-        resolve: () => resolve(releaser),
-        reject,
-        timer: null
-      };
-
-      deferred.timer = setTimeout(() => {
+      const timer = setTimeout(() => {
         const index = this._queue.indexOf(deferred);
         if (index !== -1) {
           this._queue.splice(index, 1);
@@ -84,22 +108,42 @@ export class Semaphore implements ISemaphore {
         reject(new Error("Timeout acquiring semaphore"));
       }, timeoutMs);
 
+      const deferred: IDeferred = {
+        resolve: () => {
+          if (timer) {
+            clearTimeout(timer);
+          }
+          resolve(releaser);
+        },
+        reject: (err) => {
+          if (timer) {
+            clearTimeout(timer);
+          }
+          reject(err);
+        }
+      };
+
       this._queue.push(deferred);
     });
   }
 
   public async cancelAll(errMessage?: string): Promise<void> {
-    while (this._queue.length > 0) {
-      const { timer, reject } = this._queue.shift()!;
+    const cancellationList = [...this._queue];
 
-      if (timer) {
-        clearTimeout(timer);
-      }
+    await Promise.all(cancellationList.map(deferred => deferred.reject(new Error(errMessage ?? "Semaphore cancelled"))));
 
-      reject(new Error(errMessage ?? "Semaphore cancelled"));
-    }
-
+    this._queue = [];
     this._freeCount = this.maxCount;
+
+    // Notify all waitingForAnyUnlockListeners listeners since we're resetting to unlocked state
+    const waitingForAnyUnlockListeners = [...this._waitingForAnyUnlockListeners];
+    this._waitingForAnyUnlockListeners = [];
+    waitingForAnyUnlockListeners.forEach(listener => listener.reject(new Error(errMessage ?? "Semaphore cancelled")));
+
+    // Notify all waitingForFullyUnlockListeners listeners since we're resetting to unlocked state
+    const fullyUnlockListeners = [...this._waitingForFullyUnlockListeners];
+    this._waitingForFullyUnlockListeners = [];
+    fullyUnlockListeners.forEach(listener => listener.reject(new Error(errMessage ?? "Semaphore cancelled")));
   }
 
   public async isLocked(): Promise<boolean> {
@@ -112,13 +156,22 @@ export class Semaphore implements ISemaphore {
     }
 
     if (this._queue.length > 0) {
-      const { resolve, timer } = this._queue.shift()!;
-      if (timer) {
-        clearTimeout(timer);
-      }
+      const { resolve } = this._queue.shift()!;
       resolve();
     } else {
       this._freeCount++;
+
+      if (this._freeCount > 0 && this._waitingForAnyUnlockListeners.length > 0) {
+        const listeners = [...this._waitingForAnyUnlockListeners];
+        this._waitingForAnyUnlockListeners = [];
+        listeners.forEach(listener => listener.resolve());
+      }
+
+      if (this._freeCount === this.maxCount) {
+        const listeners = [...this._waitingForFullyUnlockListeners];
+        this._waitingForFullyUnlockListeners = [];
+        listeners.forEach(listener => listener.resolve());
+      }
     }
   }
 }

@@ -21,6 +21,10 @@ export class DistributedMutex implements IDistributedMutex {
     this._implementation = DistributedMutex.factory(props);
   }
 
+  public waitForUnlock(): Promise<void> {
+    return this._implementation.waitForUnlock();
+  }
+
   get isDestroyed() {
     return this._implementation.isDestroyed;
   }

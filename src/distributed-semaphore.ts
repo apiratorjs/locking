@@ -23,6 +23,14 @@ export class DistributedSemaphore implements IDistributedSemaphore {
     this._implementation = DistributedSemaphore.factory(props);
   }
 
+  public async waitForFullyUnlock(): Promise<void> {
+    return this._implementation.waitForFullyUnlock();
+  }
+
+  public waitForAnyUnlock(): Promise<void> {
+    return this._implementation.waitForAnyUnlock();
+  }
+
   get isDestroyed() {
     return this._implementation.isDestroyed;
   }

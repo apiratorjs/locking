@@ -27,6 +27,14 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     }
   }
 
+  public async waitForFullyUnlock(): Promise<void> {
+    return this.getSemaphoreOrException().waitForFullyUnlock();
+  }
+
+  public async waitForAnyUnlock(): Promise<void> {
+    return this.getSemaphoreOrException().waitForAnyUnlock();
+  }
+
   get isDestroyed() {
     return this._isDestroyed;
   }

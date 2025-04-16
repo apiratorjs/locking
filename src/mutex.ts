@@ -32,4 +32,8 @@ export class Mutex implements IMutex {
   public async isLocked(): Promise<boolean> {
     return this._semaphore.isLocked();
   }
+
+  public async waitForUnlock(): Promise<void> {
+    return await this._semaphore.waitForAnyUnlock();
+  }
 }

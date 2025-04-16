@@ -6,7 +6,7 @@ package-lock.json
 tsconfig.json
 test/
 src/
-samples/
+examples/
 *.test.ts
 *.test.js
 docker-compose.yml

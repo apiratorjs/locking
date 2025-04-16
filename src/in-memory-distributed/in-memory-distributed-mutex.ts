@@ -24,6 +24,10 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
     );
   }
 
+  public async waitForUnlock(): Promise<void> {
+    return this._inMemoryDistributedSemaphore.waitForAnyUnlock();
+  }
+
   public get name(): string {
     return this._inMemoryDistributedSemaphore.name;
   };

@@ -168,4 +168,21 @@ describe("Mutex", () => {
 
     assert.strictEqual(maxConcurrent, 1, "Should never exceed concurrency of 1");
   });
+
+  it("should wait for the mutex to be unlocked", async () => {
+    const mutex = new Mutex();
+    const releaser = await mutex.acquire();
+
+    assert.strictEqual(await mutex.isLocked(), true, "Mutex should be locked");
+
+    setTimeout(() => {
+      releaser.release();
+    }, 100);
+
+    assert.strictEqual(await mutex.isLocked(), true, "Mutex should be locked")
+
+    await mutex.waitForUnlock();
+
+    assert.strictEqual(await mutex.isLocked(), false, "Mutex should be unlocked");
+  });
 });
