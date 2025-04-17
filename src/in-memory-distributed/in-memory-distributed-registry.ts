@@ -1,7 +1,9 @@
 import { Semaphore } from "../semaphore";
+import { ReadWriteLock } from "../read-write-lock";
 
 export const inMemoryDistributedSemaphoreRegistry = new Map<string, Semaphore>();
 export const inMemoryDistributedMutexRegistry = new Map<string, Semaphore>();
+export const inMemoryDistributedRWLockRegistry = new Map<string, ReadWriteLock>();
 
 export class InMemoryDistributedRegistry {
   public static listMutexNames(): string[] {
@@ -12,6 +14,10 @@ export class InMemoryDistributedRegistry {
     return Array.from(inMemoryDistributedSemaphoreRegistry.keys());
   }
 
+  public static listRWLockNames(): string[] {
+    return Array.from(inMemoryDistributedRWLockRegistry.keys());
+  }
+
   public static clearMutexRegistry(): void {
     inMemoryDistributedMutexRegistry.clear();
   }
@@ -20,12 +26,20 @@ export class InMemoryDistributedRegistry {
     inMemoryDistributedSemaphoreRegistry.clear();
   }
 
+  public static clearRWLockRegistry(): void {
+    inMemoryDistributedRWLockRegistry.clear();
+  }
+
   public static hasMutex(name: string): boolean {
     return inMemoryDistributedMutexRegistry.has(name);
   }
 
   public static hasSemaphore(name: string): boolean {
     return inMemoryDistributedSemaphoreRegistry.has(name);
+  }
+
+  public static hasRWLock(name: string): boolean {
+    return inMemoryDistributedRWLockRegistry.has(name);
   }
 
   public static getMutex(name: string): Semaphore {
@@ -44,5 +58,14 @@ export class InMemoryDistributedRegistry {
     }
 
     return semaphore;
+  }
+
+  public static getRWLock(name: string): ReadWriteLock {
+    const rwLock = inMemoryDistributedRWLockRegistry.get(name);
+    if (!rwLock) {
+      throw new Error(`ReadWriteLock ${name} does not exist`);
+    }
+
+    return rwLock;
   }
 }
