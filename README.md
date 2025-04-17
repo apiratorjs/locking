@@ -3,9 +3,7 @@
 [![NPM version](https://img.shields.io/npm/v/@apiratorjs/locking.svg)](https://www.npmjs.com/package/@apiratorjs/locking)
 [![License: MIT](https://img.shields.io/npm/l/@apiratorjs/locking.svg)](https://github.com/apiratorjs/locking/blob/main/LICENSE)
 
-A lightweight Node.js library providing both local and distributed locking primitives—mutexes and semaphores—for
-managing concurrency and ensuring synchronization in asynchronous operations. Designed for single-process as well as
-multi-instance environments, it supports (via additional packages) distributed locking backends such as Redis.
+A lightweight Node.js library for concurrency management with three types of locking primitives: mutexes, semaphores, and read-write locks. Supports both local (in-process) and distributed (multi-process) synchronization, with Redis backend support via additional packages.
 
 > **Note:** Requires Node.js version **>=16.4.0**
 
