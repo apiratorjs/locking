@@ -336,6 +336,8 @@ All locking primitives provide methods to wait for lock state changes without at
 
 Waits until the mutex is released by its current holder:
 
+> **Important:** The `waitForUnlock()` method allows you to monitor mutex availability without actually acquiring the lock. It returns a promise that resolves when the mutex becomes free for acquisition. Note that this is purely observational - the mutex remains unlocked, and due to the asynchronous nature of JavaScript, the mutex may be acquired by another operation before you have a chance to acquire it yourself.
+
 ```typescript
 import { Mutex } from "@apiratorjs/locking";
 
@@ -365,6 +367,8 @@ async function example() {
 Semaphores provide two waiting methods:
 - `waitForAnyUnlock()`: Resolves when at least one permit becomes available
 - `waitForFullyUnlock()`: Resolves when all permits are available (semaphore is fully unlocked)
+
+> **Important:** These waiting methods allow you to monitor semaphore permit availability without actually acquiring any permits. They return promises that resolve when the specified conditions are met (at least one permit available or all permits available). Note that these are purely observational - no permits are acquired, and due to the asynchronous nature of JavaScript, permits may be acquired by other operations before you have a chance to acquire them yourself.
 
 ```typescript
 import { Semaphore } from "@apiratorjs/locking";
