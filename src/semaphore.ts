@@ -2,6 +2,7 @@ import assert from "node:assert";
 import crypto from "node:crypto";
 import { AcquireParams, IDeferred, IReleaser, ISemaphore, SemaphoreToken } from "./types";
 import { DEFAULT_TIMEOUT_IN_MS } from "./constants";
+import { CancelledLockingError, TimeoutLockingError } from "./errors";
 
 class Releaser implements IReleaser<SemaphoreToken> {
   constructor(
@@ -105,7 +106,7 @@ export class Semaphore implements ISemaphore {
           this._queue.splice(index, 1);
         }
 
-        reject(new Error("Timeout acquiring semaphore"));
+        reject(new TimeoutLockingError("Timeout acquiring semaphore"));
       }, timeoutMs);
 
       const deferred: IDeferred = {
@@ -130,7 +131,7 @@ export class Semaphore implements ISemaphore {
   public async cancelAll(errMessage?: string): Promise<void> {
     const cancellationList = [...this._queue];
 
-    await Promise.all(cancellationList.map(deferred => deferred.reject(new Error(errMessage ?? "Semaphore cancelled"))));
+    await Promise.all(cancellationList.map(deferred => deferred.reject(new CancelledLockingError(errMessage ?? "Semaphore cancelled"))));
 
     this._queue = [];
     this._freeCount = this.maxCount;
@@ -138,12 +139,12 @@ export class Semaphore implements ISemaphore {
     // Notify all waitingForAnyUnlockListeners listeners since we're resetting to unlocked state
     const waitingForAnyUnlockListeners = [...this._waitingForAnyUnlockListeners];
     this._waitingForAnyUnlockListeners = [];
-    waitingForAnyUnlockListeners.forEach(listener => listener.reject(new Error(errMessage ?? "Semaphore cancelled")));
+    waitingForAnyUnlockListeners.forEach(listener => listener.reject(new CancelledLockingError(errMessage ?? "Semaphore cancelled")));
 
     // Notify all waitingForFullyUnlockListeners listeners since we're resetting to unlocked state
     const fullyUnlockListeners = [...this._waitingForFullyUnlockListeners];
     this._waitingForFullyUnlockListeners = [];
-    fullyUnlockListeners.forEach(listener => listener.reject(new Error(errMessage ?? "Semaphore cancelled")));
+    fullyUnlockListeners.forEach(listener => listener.reject(new CancelledLockingError(errMessage ?? "Semaphore cancelled")));
   }
 
   public async isLocked(): Promise<boolean> {

@@ -328,6 +328,72 @@ await semaphore.cancelAll("Operation cancelled");
 await rwLock.cancelAll("Operation cancelled");
 ```
 
+### Error Handling
+
+The library provides specific error classes to help you handle different failure scenarios:
+
+```typescript
+import {
+  LockingError,
+  TimeoutLockingError,
+  CancelledLockingError,
+  LockNotFoundError
+} from "@apiratorjs/locking";
+```
+
+#### Error Classes
+
+| Error Class | Description | When Thrown |
+|-------------|-------------|-------------|
+| `LockingError` | Base class for all locking errors | Parent class, not thrown directly |
+| `TimeoutLockingError` | Lock acquisition timed out | When `acquire()` exceeds `timeoutMs` |
+| `CancelledLockingError` | Lock acquisition was cancelled | When `cancelAll()` or `destroy()` is called |
+| `LockNotFoundError` | Lock no longer exists | When accessing a destroyed distributed lock |
+
+#### Example Usage
+
+```typescript
+import { Mutex, TimeoutLockingError, CancelledLockingError } from "@apiratorjs/locking";
+
+const mutex = new Mutex();
+
+try {
+  const releaser = await mutex.acquire({ timeoutMs: 1000 });
+  // ... critical section ...
+  await releaser.release();
+} catch (error) {
+  if (error instanceof TimeoutLockingError) {
+    console.log("Failed to acquire lock within timeout");
+  } else if (error instanceof CancelledLockingError) {
+    console.log("Lock acquisition was cancelled");
+  } else {
+    throw error;
+  }
+}
+```
+
+#### Distributed Lock Error Handling
+
+```typescript
+import { DistributedMutex, LockNotFoundError, CancelledLockingError } from "@apiratorjs/locking";
+
+const mutex = new DistributedMutex({ name: "my-resource" });
+
+try {
+  const releaser = await mutex.acquire();
+  // ... critical section ...
+  await releaser.release();
+} catch (error) {
+  if (error instanceof LockNotFoundError) {
+    console.log("Lock was destroyed by another process");
+  } else if (error instanceof CancelledLockingError) {
+    console.log("Lock acquisition was cancelled");
+  } else {
+    throw error;
+  }
+}
+```
+
 ### Waiting for Lock State Changes
 
 All locking primitives provide methods to wait for lock state changes without attempting to acquire the lock:

@@ -1,7 +1,7 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert";
 import { sleep } from "./utils";
-import { DistributedMutex, InMemoryDistributedRegistry } from "../src";
+import { DistributedMutex, InMemoryDistributedRegistry, TimeoutLockingError, CancelledLockingError, LockNotFoundError } from "../src";
 import { IReleaser } from "../src/types";
 
 const DISTRIBUTED_MUTEX_NAME = "mutex1";
@@ -50,7 +50,7 @@ describe("DistributedMutex (In Memory by default)", () => {
       error = err;
     }
 
-    assert.ok(error instanceof Error, "Error should be thrown on timeout");
+    assert.ok(error instanceof TimeoutLockingError, "Error should be TimeoutLockingError");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
     await releaser.release();
@@ -69,6 +69,8 @@ describe("DistributedMutex (In Memory by default)", () => {
 
     await Promise.allSettled([p1, p2]);
 
+    assert.ok(error1 instanceof CancelledLockingError, "Error should be CancelledLockingError");
+    assert.ok(error2 instanceof CancelledLockingError, "Error should be CancelledLockingError");
     assert.strictEqual(error1!.message, "Mutex cancelled");
     assert.strictEqual(error2!.message, "Mutex cancelled");
 
@@ -152,7 +154,7 @@ describe("DistributedMutex (In Memory by default)", () => {
     await mutex1.cancel();
 
     await pending;
-    assert.ok(errorFromMutex2 instanceof Error, "Pending acquire should be cancelled with an error");
+    assert.ok(errorFromMutex2 instanceof CancelledLockingError, "Error should be CancelledLockingError");
     assert.strictEqual(errorFromMutex2!.message, "Mutex cancelled");
 
     await releaser.release();
@@ -174,8 +176,8 @@ describe("DistributedMutex (In Memory by default)", () => {
 
     await assert.rejects(
       async () => mutex.acquire(),
-      /does not exist/,
-      "Acquiring after destroy should throw an error"
+      (err: Error) => err instanceof LockNotFoundError && /does not exist/.test(err.message),
+      "Acquiring after destroy should throw LockNotFoundError"
     );
   });
 
@@ -212,8 +214,8 @@ describe("DistributedMutex (In Memory by default)", () => {
       pError = err;
     }
 
-    assert.ok(pError, "Second mutex should be rejected");
-    assert.ok(pError!.message === "Mutex destroyed", "Error message should be 'Mutex destroyed'");
+    assert.ok(pError instanceof CancelledLockingError, "Error should be CancelledLockingError");
+    assert.strictEqual(pError!.message, "Mutex destroyed", "Error message should be 'Mutex destroyed'");
     assert.ok(!semaphore2Acquired, "Second mutex should not be acquired");
   });
 });

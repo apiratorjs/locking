@@ -1,5 +1,6 @@
 import { Semaphore } from "../semaphore";
 import { ReadWriteLock } from "../read-write-lock";
+import { LockNotFoundError } from "../errors";
 
 export const inMemoryDistributedSemaphoreRegistry = new Map<string, Semaphore>();
 export const inMemoryDistributedMutexRegistry = new Map<string, Semaphore>();
@@ -45,7 +46,7 @@ export class InMemoryDistributedRegistry {
   public static getMutex(name: string): Semaphore {
     const mutex = inMemoryDistributedMutexRegistry.get(name);
     if (!mutex) {
-      throw new Error(`Mutex ${name} does not exist`);
+      throw new LockNotFoundError(`Mutex ${name} does not exist`);
     }
 
     return mutex;
@@ -54,7 +55,7 @@ export class InMemoryDistributedRegistry {
   public static getSemaphore(name: string): Semaphore {
     const semaphore = inMemoryDistributedSemaphoreRegistry.get(name);
     if (!semaphore) {
-      throw new Error(`Semaphore ${name} does not exist`);
+      throw new LockNotFoundError(`Semaphore ${name} does not exist`);
     }
 
     return semaphore;
@@ -63,7 +64,7 @@ export class InMemoryDistributedRegistry {
   public static getRWLock(name: string): ReadWriteLock {
     const rwLock = inMemoryDistributedRWLockRegistry.get(name);
     if (!rwLock) {
-      throw new Error(`ReadWriteLock ${name} does not exist`);
+      throw new LockNotFoundError(`ReadWriteLock ${name} does not exist`);
     }
 
     return rwLock;

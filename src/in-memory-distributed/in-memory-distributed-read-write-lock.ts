@@ -9,6 +9,7 @@ import {
 } from "../types";
 import { ReadWriteLock } from "../read-write-lock";
 import { inMemoryDistributedRWLockRegistry } from "./in-memory-distributed-registry";
+import { LockNotFoundError } from "../errors";
 
 export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
   public readonly name!: string;
@@ -112,7 +113,7 @@ export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
   private getRWLockOrException(): ReadWriteLock {
     const rwLock = this._registry.get(this.name);
     if (!rwLock) {
-      throw new Error(`${this._type} '${this.name}' does not exist`);
+      throw new LockNotFoundError(`${this._type} '${this.name}' does not exist`);
     }
 
     return rwLock;

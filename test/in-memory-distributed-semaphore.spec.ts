@@ -1,6 +1,6 @@
 import { beforeEach, describe, it } from "node:test";
 import assert from "node:assert";
-import { DistributedSemaphore, InMemoryDistributedRegistry } from "../src";
+import { DistributedSemaphore, InMemoryDistributedRegistry, TimeoutLockingError, CancelledLockingError, LockNotFoundError } from "../src";
 import { sleep } from "./utils";
 import { IReleaser } from "../src/types";
 
@@ -51,7 +51,7 @@ describe("DistributedSemaphore (In Memory by default)", () => {
       error = err;
     }
 
-    assert.ok(error instanceof Error, "Error should be thrown on timeout");
+    assert.ok(error instanceof TimeoutLockingError, "Error should be TimeoutLockingError");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
     await releaser.release();
@@ -72,6 +72,8 @@ describe("DistributedSemaphore (In Memory by default)", () => {
     // Wait for both promises to settle.
     await Promise.allSettled([p1, p2]);
 
+    assert.ok(error1 instanceof CancelledLockingError, "Error should be CancelledLockingError");
+    assert.ok(error2 instanceof CancelledLockingError, "Error should be CancelledLockingError");
     assert.strictEqual(error1!.message, "Semaphore cancelled");
     assert.strictEqual(error2!.message, "Semaphore cancelled");
 
@@ -153,14 +155,14 @@ describe("DistributedSemaphore (In Memory by default)", () => {
 
     const releaser1 = await sem1.acquire();
 
-    let errorFromSem2: Error;
+    let errorFromSem2: Error | undefined;
     const pending = sem2.acquire().catch((err) => { errorFromSem2 = err; });
 
     await sleep(50);
     await sem1.cancelAll();
 
     await pending;
-    assert.ok(errorFromSem2! instanceof Error, "Pending acquire should be rejected after cancelAll");
+    assert.ok(errorFromSem2 instanceof CancelledLockingError, "Error should be CancelledLockingError");
     assert.strictEqual(errorFromSem2!.message, "Semaphore cancelled");
 
     await releaser1.release();
@@ -182,8 +184,8 @@ describe("DistributedSemaphore (In Memory by default)", () => {
 
     await assert.rejects(
       async () => semaphore.acquire(),
-      /does not exist/,
-      "Acquiring after destroy should throw an error"
+      (err: Error) => err instanceof LockNotFoundError && /does not exist/.test(err.message),
+      "Acquiring after destroy should throw LockNotFoundError"
     );
   });
 
@@ -226,8 +228,8 @@ describe("DistributedSemaphore (In Memory by default)", () => {
       pError = err;
     }
 
-    assert.ok(pError, "Second semaphore should be rejected");
-    assert.ok(pError!.message === "Semaphore destroyed", "Error message should be 'Semaphore destroyed'");
+    assert.ok(pError instanceof CancelledLockingError, "Error should be CancelledLockingError");
+    assert.strictEqual(pError!.message, "Semaphore destroyed", "Error message should be 'Semaphore destroyed'");
     assert.ok(!semaphore2Acquired, "Second semaphore should not be acquired");
   });
 });

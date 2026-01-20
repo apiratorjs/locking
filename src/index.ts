@@ -6,6 +6,7 @@ import { DistributedSemaphore } from "./distributed-semaphore";
 import { DistributedMutex } from "./distributed-mutex";
 import { DistributedReadWriteLock } from "./distributed-read-write-lock";
 import { InMemoryDistributedRegistry } from "./in-memory-distributed/in-memory-distributed-registry";
+export * from "./errors";
 
 export {
   Semaphore,

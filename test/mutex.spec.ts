@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { Mutex } from "../src";
+import { Mutex, TimeoutLockingError, CancelledLockingError } from "../src";
 import { sleep } from "./utils";
 
 describe("Mutex", () => {
@@ -43,7 +43,7 @@ describe("Mutex", () => {
       error = err;
     }
 
-    assert.ok(error instanceof Error, "Error should be thrown on timeout");
+    assert.ok(error instanceof TimeoutLockingError, "Error should be TimeoutLockingError");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
     await releaser.release();
@@ -62,6 +62,8 @@ describe("Mutex", () => {
 
     await Promise.allSettled([p1, p2]);
 
+    assert.ok(error1 instanceof CancelledLockingError, "Error should be CancelledLockingError");
+    assert.ok(error2 instanceof CancelledLockingError, "Error should be CancelledLockingError");
     assert.strictEqual(error1!.message, "Mutex cancelled");
     assert.strictEqual(error2!.message, "Mutex cancelled");
 

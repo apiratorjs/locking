@@ -1,6 +1,6 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
-import { Semaphore } from "../src";
+import { Semaphore, TimeoutLockingError, CancelledLockingError } from "../src";
 import { sleep } from "./utils";
 
 describe("Semaphore", () => {
@@ -46,7 +46,7 @@ describe("Semaphore", () => {
       error = err;
     }
 
-    assert.ok(error instanceof Error, "Error should be thrown on timeout");
+    assert.ok(error instanceof TimeoutLockingError, "Error should be TimeoutLockingError");
     assert.strictEqual(error!.message, "Timeout acquiring semaphore");
 
     await releaser.release();
@@ -67,6 +67,8 @@ describe("Semaphore", () => {
     // Wait for both promises to settle.
     await Promise.allSettled([p1, p2]);
 
+    assert.ok(error1 instanceof CancelledLockingError, "Error should be CancelledLockingError");
+    assert.ok(error2 instanceof CancelledLockingError, "Error should be CancelledLockingError");
     assert.strictEqual(error1!.message, "Semaphore cancelled");
     assert.strictEqual(error2!.message, "Semaphore cancelled");
 

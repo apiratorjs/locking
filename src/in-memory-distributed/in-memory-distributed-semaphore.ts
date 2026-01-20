@@ -7,6 +7,7 @@ import {
   SemaphoreToken
 } from "../types";
 import { Semaphore } from "../semaphore";
+import { LockNotFoundError } from "../errors";
 
 export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
   public readonly maxCount!: number;
@@ -91,7 +92,7 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
   private getSemaphoreOrException(): Semaphore {
     const semaphore = this._registry.get(this.name);
     if (!semaphore) {
-      throw new Error(`${this._type} '${this.name}' does not exist`);
+      throw new LockNotFoundError(`${this._type} '${this.name}' does not exist`);
     }
 
     return semaphore;
