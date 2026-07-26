@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { ReadWriteLock } from "../src/read-write-lock";
+import { CancelledLockingError, TimeoutLockingError } from "../src/errors";
 import { sleep } from "./utils";
 
 describe("ReadWriteLock", () => {
@@ -275,7 +276,7 @@ describe("ReadWriteLock", () => {
     const rwLock = new ReadWriteLock();
     
     // Acquire write lock so others will wait
-    const writeReleaser = await rwLock.acquireWrite();
+    await rwLock.acquireWrite();
     
     // Queue some acquisitions
     const read1Promise = rwLock.acquireRead().catch(err => err);
@@ -299,38 +300,138 @@ describe("ReadWriteLock", () => {
     assert.strictEqual(read1Error.message, "Operation cancelled");
   });
 
-  it("should apply timeout only to semaphore acquisition, not to waitForFullyUnlock", async () => {
+  it("should apply the timeout to the whole acquisition, including waiting for an active writer", async () => {
     const rwLock = new ReadWriteLock();
-    
+
     // Acquire write lock so others will wait
     const writeReleaser = await rwLock.acquireWrite();
-    
+
     // Start a read acquisition with timeout
     const readPromise = rwLock.acquireRead({ timeoutMs: 100 }).catch(err => err);
-    
+
     // Wait longer than the timeout
     await sleep(200);
-    
-    // The read acquisition should still be waiting (not timed out)
-    // because the timeout only applies to the semaphore.acquire() call
-    // which doesn't happen until after waitForFullyUnlock() completes
-    const isResolved = await Promise.race([
-      readPromise.then(() => true),
-      Promise.resolve(false)
-    ]);
-    
-    assert.strictEqual(isResolved, false, "Read acquisition should still be pending");
-    
-    // Release the write lock
-    await writeReleaser.release();
-    
-    // Now the read acquisition should succeed
+
     const result = await readPromise;
-    assert.ok(typeof result !== 'string', "Read acquisition should succeed after write lock is released");
-    
-    // Clean up if it's a releaser
-    if (result && typeof result === 'object' && 'release' in result) {
-      await result.release();
-    }
+    assert.ok(result instanceof TimeoutLockingError, "Read acquisition should time out while a writer holds the lock");
+
+    await writeReleaser.release();
+  });
+
+  it("should not let a reader and a writer that start concurrently hold the lock together", async () => {
+    const rwLock = new ReadWriteLock();
+
+    let isWriting = false;
+    let violated = false;
+
+    const writeTask = rwLock.withWriteLock(async () => {
+      isWriting = true;
+      await sleep(50);
+      isWriting = false;
+    });
+
+    const readTask = rwLock.withReadLock(async () => {
+      violated = violated || isWriting;
+      await sleep(10);
+      violated = violated || isWriting;
+    });
+
+    await Promise.all([writeTask, readTask]);
+
+    assert.strictEqual(violated, false, "A reader must never run while a writer holds the lock");
+  });
+
+  it("should not grant a write lock while a reader is still active", async () => {
+    const rwLock = new ReadWriteLock();
+
+    const reader1 = await rwLock.acquireRead();
+
+    let readersDuringWrite = 0;
+    const writeTask = rwLock.acquireWrite({ timeoutMs: 500 }).then(async (writeReleaser) => {
+      readersDuringWrite = await rwLock.activeReaders();
+      await writeReleaser.release();
+    });
+
+    // A second reader asks for the lock while the writer is queued
+    const reader2Promise = rwLock.acquireRead();
+    await reader1.release();
+    const reader2 = await reader2Promise;
+    await reader2.release();
+
+    await writeTask;
+
+    assert.strictEqual(readersDuringWrite, 0, "A writer must never hold the lock while readers are active");
+  });
+
+  it("should keep already held locks held when cancelAll is called", async () => {
+    const rwLock = new ReadWriteLock();
+
+    const writeReleaser = await rwLock.acquireWrite();
+
+    const pending = rwLock.acquireWrite({ timeoutMs: 200 }).catch(err => err);
+    await sleep(10);
+
+    await rwLock.cancelAll("Cancelled");
+
+    assert.ok((await pending) instanceof CancelledLockingError, "Pending acquisition should be cancelled");
+    assert.strictEqual(await rwLock.isWriteLocked(), true, "The active writer should still hold the lock");
+
+    // No new writer may enter while the original one is still inside its critical section
+    const afterCancel = rwLock.acquireWrite({ timeoutMs: 100 }).catch(err => err);
+    assert.ok((await afterCancel) instanceof TimeoutLockingError, "A new writer must not be admitted alongside the active one");
+
+    await writeReleaser.release();
+    assert.strictEqual(await rwLock.isWriteLocked(), false);
+  });
+
+  it("should ignore repeated release calls on the same releaser", async () => {
+    const rwLock = new ReadWriteLock();
+
+    const reader = await rwLock.acquireRead();
+    assert.strictEqual(await rwLock.activeReaders(), 1);
+
+    await reader.release();
+    await reader.release();
+
+    assert.strictEqual(await rwLock.activeReaders(), 0, "activeReaders must not go below zero");
+
+    const writer = await rwLock.acquireWrite();
+    await writer.release();
+    await writer.release();
+
+    assert.strictEqual(await rwLock.isWriteLocked(), false);
+  });
+
+  it("should report isReadLocked as soon as a single reader is active", async () => {
+    const rwLock = new ReadWriteLock({ maxReaders: 10 });
+
+    assert.strictEqual(await rwLock.isReadLocked(), false);
+
+    const reader = await rwLock.acquireRead();
+    assert.strictEqual(await rwLock.isReadLocked(), true, "One active reader means the lock is read-locked");
+
+    await reader.release();
+    assert.strictEqual(await rwLock.isReadLocked(), false);
+  });
+
+  it("should fail fast when timeoutMs is 0", async () => {
+    const rwLock = new ReadWriteLock();
+
+    const writeReleaser = await rwLock.acquireWrite({ timeoutMs: 0 });
+
+    const startedAt = Date.now();
+    const rejectedRead = await rwLock.acquireRead({ timeoutMs: 0 }).catch(err => err);
+    const rejectedWrite = await rwLock.acquireWrite({ timeoutMs: 0 }).catch(err => err);
+
+    assert.ok(rejectedRead instanceof TimeoutLockingError, "timeoutMs 0 must not fall back to the default timeout");
+    assert.ok(rejectedWrite instanceof TimeoutLockingError, "timeoutMs 0 must not fall back to the default timeout");
+    assert.ok(Date.now() - startedAt < 1_000, "timeoutMs 0 must reject right away");
+
+    await writeReleaser.release();
+  });
+
+  it("should reject a non-positive maxReaders", () => {
+    assert.throws(() => new ReadWriteLock({ maxReaders: 0 }), /maxReaders must be greater than 0/);
+    assert.throws(() => new ReadWriteLock({ maxReaders: -1 }), /maxReaders must be greater than 0/);
   });
 });

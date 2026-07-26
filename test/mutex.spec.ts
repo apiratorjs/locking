@@ -187,4 +187,55 @@ describe("Mutex", () => {
 
     assert.strictEqual(await mutex.isLocked(), false, "Mutex should be unlocked");
   });
+
+  it("should keep the mutex locked when cancel is called while it is held", async () => {
+    const mutex = new Mutex();
+
+    const releaser = await mutex.acquire();
+
+    const pending = mutex.acquire({ timeoutMs: 200 }).catch(err => err);
+    await sleep(50);
+
+    await mutex.cancel();
+
+    assert.ok((await pending) instanceof CancelledLockingError, "Pending acquisition should be cancelled");
+    assert.strictEqual(await mutex.isLocked(), true, "Mutex must stay locked while its owner holds it");
+
+    const afterCancel = await mutex.acquire({ timeoutMs: 100 }).catch(err => err);
+    assert.ok(afterCancel instanceof TimeoutLockingError, "cancel() must not let a second holder into the critical section");
+
+    await releaser.release();
+    assert.strictEqual(await mutex.isLocked(), false);
+  });
+
+  it("should keep waitForUnlock waiting when cancel is called", async () => {
+    const mutex = new Mutex();
+    const releaser = await mutex.acquire();
+
+    let settled = false;
+    const waiting = mutex.waitForUnlock().then(() => { settled = true; });
+
+    await mutex.cancel();
+    await sleep(50);
+
+    assert.strictEqual(settled, false, "cancel() must not settle waitForUnlock - the mutex is still held");
+
+    await releaser.release();
+    await waiting;
+
+    assert.strictEqual(settled, true, "waitForUnlock must resolve once the mutex is actually released");
+  });
+
+  it("should fail fast when timeoutMs is 0", async () => {
+    const mutex = new Mutex();
+    const releaser = await mutex.acquire();
+
+    const startedAt = Date.now();
+    const rejected = await mutex.acquire({ timeoutMs: 0 }).catch(err => err);
+
+    assert.ok(rejected instanceof TimeoutLockingError, "timeoutMs 0 must not fall back to the default timeout");
+    assert.ok(Date.now() - startedAt < 1_000, "timeoutMs 0 must reject right away");
+
+    await releaser.release();
+  });
 });

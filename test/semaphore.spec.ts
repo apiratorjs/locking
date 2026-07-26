@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert";
 import { Semaphore, TimeoutLockingError, CancelledLockingError } from "../src";
+import { TSemaphoreToken } from "../src/types";
 import { sleep } from "./utils";
 
 describe("Semaphore", () => {
@@ -245,5 +246,136 @@ describe("Semaphore", () => {
     await semaphore.waitForFullyUnlock();
 
     assert.strictEqual(await semaphore.freeCount(), 5, "Semaphore should have 3 slots free");
+  });
+
+  it("should not hand back extra permits when the same releaser is released twice", async () => {
+    const semaphore = new Semaphore(2);
+
+    const releaser1 = await semaphore.acquire();
+    const releaser2 = await semaphore.acquire();
+    assert.strictEqual(await semaphore.freeCount(), 0);
+
+    await releaser1.release();
+    await releaser1.release();
+
+    assert.strictEqual(await semaphore.freeCount(), 1, "Double release must free exactly one permit");
+
+    // Only one permit is really free, so the second acquisition must not be admitted
+    // while releaser2 is still inside its critical section.
+    await semaphore.acquire();
+    const extra = await semaphore.acquire({ timeoutMs: 100 }).catch(err => err);
+
+    assert.ok(extra instanceof TimeoutLockingError, "Semaphore must not admit more holders than maxCount");
+
+    await releaser2.release();
+  });
+
+  it("should keep held permits held when cancelAll is called", async () => {
+    const semaphore = new Semaphore(1);
+
+    const releaser = await semaphore.acquire();
+
+    const pending = semaphore.acquire({ timeoutMs: 200 }).catch(err => err);
+    await sleep(50);
+
+    await semaphore.cancelAll();
+
+    assert.ok((await pending) instanceof CancelledLockingError, "Pending acquisition should be cancelled");
+    assert.strictEqual(await semaphore.isLocked(), true, "The active holder should still hold its permit");
+    assert.strictEqual(await semaphore.freeCount(), 0, "cancelAll must not reset the permit count");
+
+    const afterCancel = await semaphore.acquire({ timeoutMs: 100 }).catch(err => err);
+    assert.ok(afterCancel instanceof TimeoutLockingError, "No new holder may be admitted alongside the active one");
+
+    await releaser.release();
+    assert.strictEqual(await semaphore.isLocked(), false);
+    assert.strictEqual(await semaphore.freeCount(), 1);
+  });
+
+  it("should fail fast when timeoutMs is 0", async () => {
+    const semaphore = new Semaphore(1);
+
+    // A free semaphore is still acquired immediately with timeoutMs 0
+    const releaser = await semaphore.acquire({ timeoutMs: 0 });
+
+    const startedAt = Date.now();
+    const rejected = await semaphore.acquire({ timeoutMs: 0 }).catch(err => err);
+
+    assert.ok(rejected instanceof TimeoutLockingError, "timeoutMs 0 must not fall back to the default timeout");
+    assert.ok(Date.now() - startedAt < 1_000, "timeoutMs 0 must reject right away");
+
+    await releaser.release();
+  });
+
+  it("should keep unlock listeners waiting when cancelAll is called", async () => {
+    const semaphore = new Semaphore(1);
+    const releaser = await semaphore.acquire();
+
+    let anyUnlockSettled = false;
+    let fullyUnlockSettled = false;
+    const anyUnlock = semaphore.waitForAnyUnlock().then(() => { anyUnlockSettled = true; });
+    const fullyUnlock = semaphore.waitForFullyUnlock().then(() => { fullyUnlockSettled = true; });
+
+    await semaphore.cancelAll();
+    await sleep(50);
+
+    assert.strictEqual(anyUnlockSettled, false, "cancelAll must not settle waitForAnyUnlock - the semaphore is still alive");
+    assert.strictEqual(fullyUnlockSettled, false, "cancelAll must not settle waitForFullyUnlock - the semaphore is still alive");
+
+    // ...and they are notified once the permit actually comes back
+    await releaser.release();
+    await anyUnlock;
+    await fullyUnlock;
+
+    assert.strictEqual(anyUnlockSettled, true);
+    assert.strictEqual(fullyUnlockSettled, true);
+  });
+
+  it("should resolve unlock listeners when the semaphore is disposed", async () => {
+    const semaphore = new Semaphore(1);
+    await semaphore.acquire();
+
+    const anyUnlock = semaphore.waitForAnyUnlock();
+    const fullyUnlock = semaphore.waitForFullyUnlock();
+    const pendingAcquire = semaphore.acquire({ timeoutMs: 500 }).catch(err => err);
+
+    await semaphore.dispose("Semaphore destroyed");
+
+    // Unlock listeners resolve rather than reject: a lock that no longer exists
+    // cannot be held, and a fire-and-forget waiter must not blow up the process.
+    await anyUnlock;
+    await fullyUnlock;
+
+    assert.ok((await pendingAcquire) instanceof CancelledLockingError, "Pending acquisitions are still cancelled");
+  });
+
+  it("should use the token it was given for the acquisition", async () => {
+    const semaphore = new Semaphore(2);
+
+    const withOwnToken = await semaphore.acquire();
+    assert.ok(withOwnToken.getToken(), "Without a token a uuid is generated");
+
+    // A layer on top of the semaphore brands the acquisition, and the releaser the
+    // caller gets back reports exactly that token - one acquisition, one identity.
+    const given = "mutex:orders:42" as unknown as TSemaphoreToken;
+    const withGivenToken = await semaphore.acquire({ timeoutMs: 100 }, given);
+
+    assert.strictEqual(withGivenToken.getToken(), given);
+
+    await withOwnToken.release();
+    await withGivenToken.release();
+  });
+
+  it("should keep the given token for an acquisition that had to wait", async () => {
+    const semaphore = new Semaphore(1);
+
+    const held = await semaphore.acquire();
+    const given = "semaphore:uploads:7" as unknown as TSemaphoreToken;
+    const queued = semaphore.acquire({ timeoutMs: 500 }, given);
+
+    await sleep(20);
+    await held.release();
+
+    assert.strictEqual((await queued).getToken(), given);
   });
 });

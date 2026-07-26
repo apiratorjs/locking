@@ -6,6 +6,8 @@
 A lightweight Node.js library for concurrency management with three types of locking primitives: mutexes, semaphores, and read-write locks. Supports both local (in-process) and distributed (multi-process) synchronization, with Redis backend support via additional packages.
 
 > **Note:** Requires Node.js version **>=16.4.0**
+>
+> Upgrading from 4.x? See [CHANGELOG](./CHANGELOG.md) and [5.0.0 release notes](./RELEASE_NOTES.md).
 
 ---
 
@@ -66,23 +68,23 @@ A lightweight Node.js library for concurrency management with three types of loc
 
 ### Distributed Locking Primitives
 
-- **Distributed Mutex**
-    - Similar API to the local Mutex.
-    - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
-      to enable cross-process or multi-instance distributed locking with Redis.
+Distributed locks are created by name through an `InMemoryDistributedLockManager`.
 
-- **Distributed Semaphore**
-    - Similar API to the local Semaphore.
-    - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis))
-      to enable cross-process or multi-instance distributed locking with Redis.
+- **Distributed Mutex** — same API as the local Mutex, shared by name.
+- **Distributed Semaphore** — same API as the local Semaphore, shared by name.
+- **Distributed ReadWriteLock** — same API as the local ReadWriteLock, shared by name.
 
-- **Distributed ReadWriteLock**
-    - Similar API to the local ReadWriteLock.
-    - By default, uses an in-memory store—only suitable for single-process usage.
-    - Use external packages (e.g., [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (currently does not support it))
-      to enable cross-process or multi-instance distributed locking with Redis.
+By default a manager keeps everything in memory, which only synchronizes code inside one process. For
+cross-process or multi-instance locking, use a backend that implements `IDistributedLockManager` — for
+example [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis) (currently without
+read-write lock support).
+
+- **InMemoryDistributedLockManager**
+    - Process-local implementation of `IDistributedLockManager`.
+    - A single place that owns your named locks: the same name gives you the same instance while it is alive.
+    - Answers `hasMutex` / `hasSemaphore` / `hasRWLock`, lists what exists and reports live state.
+    - `cancelAll()` to drain waiters, `destroyAll()` for graceful shutdown.
+    - Backend packages implement `IDistributedLockManager` themselves; several managers can run side by side.
 
 ### General
 
@@ -109,7 +111,13 @@ yarn add @apiratorjs/locking
 
 ## Usage
 
-> All locking primitives have a default acquire timeout of 1 minute.
+> All locking primitives have a default acquire timeout of 1 minute. Pass `timeoutMs: 0` to fail fast with a
+> `TimeoutLockingError` when the lock is not immediately available.
+>
+> `cancel()` (mutex) / `cancelAll()` (semaphore, read-write lock, manager) reject the pending acquisitions only:
+> locks that are already held stay held, and `waitForUnlock()` / `waitForAnyUnlock()` / `waitForFullyUnlock()` keep
+> waiting until the holders actually release. On distributed locks, `destroy()` additionally resolves those waiters,
+> since a lock that no longer exists cannot be held.
 
 ### Local Primitives
 
@@ -137,7 +145,7 @@ async function example() {
   });
   
   // Cancel all pending acquisitions
-  await mutex.cancelAll("Operation cancelled");
+  await mutex.cancel("Operation cancelled");
 }
 ```
 
@@ -212,21 +220,27 @@ async function example() {
 
 ### Distributed Primitives
 
-> By default, distributed primitives use an in-memory store suitable only for single-process usage.
-> For multi-process or multi-instance environments, use an external backend like `@apiratorjs/locking-redis`.
+Distributed locks are created through an `InMemoryDistributedLockManager`: it owns them by name and hands out the same
+instance for the same name. See [Managing Locks](#managing-locks-inmemorydistributedlockmanager) for the manager itself.
+
+> By default, a manager is in-memory and therefore suitable only for single-process usage. For multi-process or
+> multi-instance environments, use a backend that implements `IDistributedLockManager` - see
+> [Switching to a Real Distributed Backend](#switching-to-a-real-distributed-backend).
 
 #### Distributed Mutex
 
 ```typescript
-import { DistributedMutex } from "@apiratorjs/locking";
+import { InMemoryDistributedLockManager } from "@apiratorjs/locking";
+
+const locks = new InMemoryDistributedLockManager();
 
 async function example() {
-  const mutex = new DistributedMutex({ name: "shared-resource" });
+  const mutex = locks.mutex("shared-resource");
   
   // Method 1: Manual acquisition and release
   const releaser = await mutex.acquire({ timeoutMs: 5000 });
   try {
-    // Critical section - exclusive access across processes
+    // Critical section - exclusive access (shared by name within this manager)
     console.log("Distributed mutex acquired");
   } finally {
     await releaser.release();
@@ -239,25 +253,24 @@ async function example() {
   });
   
   // Cancel all pending acquisitions
-  await mutex.cancelAll("Operation cancelled");
+  await mutex.cancel("Operation cancelled");
 }
 ```
 
 #### Distributed Semaphore
 
 ```typescript
-import { DistributedSemaphore } from "@apiratorjs/locking";
+import { InMemoryDistributedLockManager } from "@apiratorjs/locking";
+
+const locks = new InMemoryDistributedLockManager();
 
 async function example() {
-  const semaphore = new DistributedSemaphore({
-    name: "api-rate-limiter",
-    maxCount: 5
-  });
+  const semaphore = locks.semaphore("api-rate-limiter", 5);
   
   // Method 1: Manual acquisition and release
   const releaser = await semaphore.acquire({ timeoutMs: 5000 });
   try {
-    // Protected section - limited concurrency across processes
+    // Protected section - limited concurrency (shared by name within this manager)
     console.log("Distributed semaphore slot acquired");
   } finally {
     await releaser.release();
@@ -277,13 +290,12 @@ async function example() {
 #### Distributed ReadWriteLock
 
 ```typescript
-import { DistributedReadWriteLock } from "@apiratorjs/locking";
+import { InMemoryDistributedLockManager } from "@apiratorjs/locking";
+
+const locks = new InMemoryDistributedLockManager();
 
 async function example() {
-  const rwLock = new DistributedReadWriteLock({
-    name: "shared-config",
-    maxReaders: 50
-  });
+  const rwLock = locks.readWriteLock("shared-config", 50);
   
   // For read operations (multiple readers allowed)
   const readReleaser = await rwLock.acquireRead({ timeoutMs: 3000 });
@@ -323,10 +335,16 @@ All primitives support cancelling pending acquisitions:
 
 ```typescript
 // Cancel all pending acquisitions with custom error message
-await mutex.cancelAll("Operation cancelled");
+await mutex.cancel("Operation cancelled");
 await semaphore.cancelAll("Operation cancelled");
 await rwLock.cancelAll("Operation cancelled");
+
+// ...or everything a manager holds at once
+await locks.cancelAll("Operation cancelled");
 ```
+
+Cancelling never takes a lock away from whoever is holding it — it rejects the waiters, and the owners release as
+usual.
 
 ### Error Handling
 
@@ -337,7 +355,8 @@ import {
   LockingError,
   TimeoutLockingError,
   CancelledLockingError,
-  LockNotFoundError
+  LockNotFoundError,
+  LockConfigMismatchError
 } from "@apiratorjs/locking";
 ```
 
@@ -347,8 +366,9 @@ import {
 |-------------|-------------|-------------|
 | `LockingError` | Base class for all locking errors | Parent class, not thrown directly |
 | `TimeoutLockingError` | Lock acquisition timed out | When `acquire()` exceeds `timeoutMs` |
-| `CancelledLockingError` | Lock acquisition was cancelled | When `cancelAll()` or `destroy()` is called |
+| `CancelledLockingError` | Lock acquisition was cancelled | When `cancel()` / `cancelAll()` or `destroy()` is called |
 | `LockNotFoundError` | Lock no longer exists | When accessing a destroyed distributed lock |
+| `LockConfigMismatchError` | A lock with this name already exists with different settings | When a distributed lock is constructed with a `maxCount` / `maxReaders` that conflicts with the existing lock of the same name |
 
 #### Example Usage
 
@@ -375,9 +395,10 @@ try {
 #### Distributed Lock Error Handling
 
 ```typescript
-import { DistributedMutex, LockNotFoundError, CancelledLockingError } from "@apiratorjs/locking";
+import { InMemoryDistributedLockManager, LockNotFoundError, CancelledLockingError } from "@apiratorjs/locking";
 
-const mutex = new DistributedMutex({ name: "my-resource" });
+const locks = new InMemoryDistributedLockManager();
+const mutex = locks.mutex("my-resource");
 
 try {
   const releaser = await mutex.acquire();
@@ -471,60 +492,149 @@ async function example() {
 }
 ```
 
+### Managing Locks: `InMemoryDistributedLockManager`
+
+`InMemoryDistributedLockManager` owns a set of named locks. It hands out the same instance for the same name while that
+lock is alive, so you no longer have to pass lock objects around, and it knows what it handed out — which makes
+listing, draining and shutdown possible.
+
+```typescript
+import { InMemoryDistributedLockManager, ELockDisplayType } from "@apiratorjs/locking";
+
+// One per backend; inject it instead of reaching for a global
+export const locks = new InMemoryDistributedLockManager();
+
+// Same name -> same instance, created on first use
+locks.mutex("orders") === locks.mutex("orders"); // true
+
+await locks.mutex("orders").runExclusive(() => shipOrder());
+await locks.semaphore("uploads", 5).runExclusive(() => upload());
+await locks.readWriteLock("catalog").withReadLock(() => readCatalog());
+```
+
+#### Inspecting what exists
+
+```typescript
+locks.hasMutex("orders");           // true
+locks.hasSemaphore("uploads");      // true
+locks.hasRWLock("catalog");         // true
+
+locks.count();                      // 3
+locks.count(ELockDisplayType.Semaphore);   // 1
+
+locks.list();
+// [ { kind: "mutex", name: "orders", implementation: "in-memory", isDestroyed: false },
+//   { kind: "semaphore", name: "uploads", implementation: "in-memory", isDestroyed: false, maxCount: 5 }, ... ]
+
+await locks.snapshot();
+// same, plus current state: isLocked / freeCount / isWriteLocked / isReadLocked / activeReaders
+```
+
+`has*`, `list()` and `count()` are synchronous and cheap; `snapshot()` reads live state through the lock implementation,
+so it is asynchronous. Locks destroyed in the meantime are dropped rather than reported.
+
+#### Draining and shutdown
+
+```typescript
+// Reject everything that is waiting; held locks stay held and the locks stay usable
+await locks.cancelAll("Draining before deploy");
+
+// Tear everything down: waiters are rejected, handles report isDestroyed, the manager empties itself
+process.on("SIGTERM", async () => {
+  await locks.destroyAll("Shutting down");
+});
+```
+
+> `cancelAll()` never force-releases a lock somebody is holding — that would put two owners inside the same
+> critical section. It cancels the queue; the owners release as usual.
+
+If a lock fails to cancel or destroy, the bulk operation still processes the rest and then throws an
+`AggregateError` with the collected failures.
+
+#### Requesting a different configuration
+
+A name is registered together with its configuration, so asking for the same name with a different capacity is a
+mistake rather than a silent reconfiguration:
+
+```typescript
+locks.semaphore("uploads", 5);
+locks.semaphore("uploads", 10); // throws LockConfigMismatchError
+
+locks.readWriteLock("catalog", 3);
+locks.readWriteLock("catalog");  // fine - no maxReaders means "whatever is registered"
+```
+
+---
+
 ### Switching to a Real Distributed Backend
 
-By default, `DistributedMutex`, `DistributedSemaphore`, and `DistributedReadWriteLock` use an in-memory store. This does not provide real
-cross-process synchronization if you run multiple Node.js processes or servers.
+`InMemoryDistributedLockManager` synchronizes code inside one Node.js process, and nothing more. For
+several processes or servers you need a backend that all of them talk to — a package that implements
+`IDistributedLockManager`, such as [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis).
 
-If you need actual distributed locking, install an additional package such
-as [@apiratorjs/locking-redis](https://github.com/apiratorjs/locking-redis), which plugs into this library
-to enable Redis-based locking primitives. You would then configure the `DistributedMutex.factory` or 
-`DistributedSemaphore.factory` to use the Redis-based constructor, for example:
-
-> **Note:** The current version of `@apiratorjs/locking-redis` does not yet support `DistributedReadWriteLock`. Support for distributed read-write locks will be added in a future release.
+> **Note:** The current version of `@apiratorjs/locking-redis` does not yet support distributed read-write locks.
 
 ```typescript
-import { DistributedSemaphore } from "@apiratorjs/locking";
-import { createRedisLockFactory } from "@apiratorjs/locking-redis";
+import { types } from "@apiratorjs/locking";
+import { RedisDistributedLockManager } from "@apiratorjs/locking-redis";
 
-(async () => {
-  const lockFactory = await createRedisLockFactory({ url: "redis://localhost:6379" });
+// Same IDistributedLockManager contract, Redis-backed
+export const locks: types.IDistributedLockManager = new RedisDistributedLockManager({
+  url: "redis://localhost:6379",
+});
 
-  DistributedSemaphore.factory = lockFactory.createDistributedSemaphore;
-
-  // Now all new DistributedSemaphore instances use Redis for synchronization
-  const semaphore = new DistributedSemaphore({ name: "shared-name", maxCount: 5 });
-})();
+await locks.mutex("shared-resource").runExclusive(() => chargeCard());
+await locks.semaphore("api-rate-limiter", 5).runExclusive(() => callUpstream());
 ```
 
-```typescript
-import { DistributedMutex } from "@apiratorjs/locking";
-import { createRedisLockFactory } from "@apiratorjs/locking-redis";
-
-(async () => {
-  const lockFactory = await createRedisLockFactory({ url: "redis://localhost:6379" });
-
-  DistributedMutex.factory = lockFactory.createDistributedMutex;
-
-  // Now all new DistributedMutex instances use Redis for synchronization
-  const mutex = new DistributedMutex({ name: "shared-name" });
-})();
-```
+Nothing is global here, so a Redis-backed manager and an in-memory one can coexist — useful when only part of the
+system needs cross-process coordination, and in tests.
 
 ---
 
 ### Own implementation of a distributed backend
 
-You can also implement your own distributed backend by implementing the `IDistributedSemaphore`, `IDistributedMutex`,
-`IDistributedReadWriteLock`, `DistributedSemaphoreFactory`, `DistributedMutexFactory`, and `DistributedRWLockFactory` interfaces. And apply them:
+Implement `IDistributedLockManager` (and, behind it, `IDistributedMutex` / `IDistributedSemaphore` /
+`IDistributedRWLock`):
 
 ```typescript
-DistributedMutex.factory = (props: DistributedMutexConstructorProps) => IDistributedMutex;
+import { types } from "@apiratorjs/locking";
 
-DistributedSemaphore.factory = (props: DistributedSemaphoreConstructorProps) => IDistributedSemaphore;
+export class MyDistributedLockManager implements types.IDistributedLockManager {
+  public mutex(name: string): types.IDistributedMutex {
+    // create or return the named mutex
+  }
 
-DistributedReadWriteLock.factory = (props: DistributedRWLockConstructorProps) => IDistributedReadWriteLock;
+  public semaphore(name: string, maxCount: number): types.IDistributedSemaphore {
+    // ...
+  }
+
+  public readWriteLock(name: string, maxReaders?: number): types.IDistributedRWLock {
+    // ...
+  }
+
+  public hasMutex(name: string): boolean { /* ... */ }
+  public hasSemaphore(name: string): boolean { /* ... */ }
+  public hasRWLock(name: string): boolean { /* ... */ }
+
+  public list(): types.TDistributedLockInfo[] { /* ... */ }
+  public count(kind?: types.ELockDisplayType): number { /* ... */ }
+  public snapshot(): Promise<types.TDistributedLockSnapshot[]> { /* ... */ }
+  public cancelAll(errMessage?: string): Promise<void> { /* ... */ }
+  public destroyAll(errMessage?: string): Promise<void> { /* ... */ }
+}
 ```
+
+What an implementation is responsible for:
+
+- **Owning locks by name.** The same name should return the same live instance; destroyed locks are forgotten.
+- **Rejecting a conflicting configuration.** If `"uploads"` already exists with `maxCount: 2`, a request for
+  `maxCount: 5` should throw `LockConfigMismatchError` rather than silently return a different capacity.
+- **Never force-releasing a held lock.** `cancelAll()` cancels waiters; owners release their own locks.
+- **`destroy()` being idempotent**, and `isDestroyed` becoming `true` once a lock is torn down.
+
+`InMemoryDistributedLockManager` and the in-memory locks under `src/in-memory-distributed` can be read as a
+reference.
 
 ---
 

@@ -3,30 +3,30 @@ export interface IDeferred {
   reject: (error: Error) => void;
 }
 
-export type AcquireParams = {
+export type TAcquireParams = {
   /**
-   * Maximum time to wait for acquisition in milliseconds
-   * If not specified, default timeout will be used
+   * Maximum time to wait for acquisition in milliseconds.
+   * If not specified, default timeout will be used.
+   * Pass 0 to fail fast with a TimeoutLockingError when the lock is not
+   * immediately available.
    */
   timeoutMs?: number;
 };
 
 // Branded type for Semaphore tokens to prevent mixing with Mutex tokens
-export type SemaphoreToken = string & { readonly __brand: unique symbol };
+export type TSemaphoreToken = string & { readonly __brand: unique symbol };
 
 // Branded type for Mutex tokens to prevent mixing with Semaphore tokens
-export type MutexToken = string & { readonly __brand: unique symbol };
+export type TMutexToken = string & { readonly __brand: unique symbol };
 
 // Branded types for read-write locks
-export type ReadLockToken = string & { readonly __brand: unique symbol };
-export type WriteLockToken = string & { readonly __brand: unique symbol };
-
-export type RWLockToken = ReadLockToken | WriteLockToken;
+export type TReadLockToken = string & { readonly __brand: unique symbol };
+export type TWriteLockToken = string & { readonly __brand: unique symbol };
 
 // Generic token type for code that works with both semaphores and mutexes
-export type AcquireToken = SemaphoreToken | MutexToken | ReadLockToken | WriteLockToken;
+export type TAcquireToken = TSemaphoreToken | TMutexToken | TReadLockToken | TWriteLockToken;
 
-export type ExclusiveCallback<T> = () => Promise<T> | T;
+export type TExclusiveCallback<T> = () => Promise<T> | T;
 
 export interface ISemaphore {
   maxCount: number;
@@ -38,7 +38,7 @@ export interface ISemaphore {
    * @param params Optional acquisition parameters
    * @returns A releaser that can be used to release the semaphore
    */
-  acquire(params?: AcquireParams): Promise<IReleaser<SemaphoreToken>>;
+  acquire(params?: TAcquireParams): Promise<IReleaser<TSemaphoreToken>>;
 
   /**
    * Cancel all pending acquisitions
@@ -55,14 +55,14 @@ export interface ISemaphore {
    * Run a callback with exclusive access
    * @param fn The callback to run
    */
-  runExclusive<T>(fn: ExclusiveCallback<T>): Promise<T>;
+  runExclusive<T>(fn: TExclusiveCallback<T>): Promise<T>;
 
   /**
    * Run a callback with exclusive access
    * @param params Acquisition parameters
    * @param fn The callback to run
    */
-  runExclusive<T>(params: AcquireParams, fn: ExclusiveCallback<T>): Promise<T>;
+  runExclusive<T>(params: TAcquireParams, fn: TExclusiveCallback<T>): Promise<T>;
 
   /**
    * Wait for any semaphore slot to be unlocked
@@ -81,7 +81,7 @@ export interface IMutex {
    * @param params Optional acquisition parameters
    * @returns A releaser that can be used to release the mutex
    */
-  acquire(params?: AcquireParams): Promise<IReleaser<MutexToken>>;
+  acquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken>>;
 
   /**
    * Cancel any pending acquisitions
@@ -98,14 +98,14 @@ export interface IMutex {
    * Run a callback with exclusive access
    * @param fn The callback to run
    */
-  runExclusive<T>(fn: ExclusiveCallback<T>): Promise<T>;
+  runExclusive<T>(fn: TExclusiveCallback<T>): Promise<T>;
 
   /**
    * Run a callback with exclusive access
    * @param params Acquisition parameters
    * @param fn The callback to run
    */
-  runExclusive<T>(params: AcquireParams, fn: ExclusiveCallback<T>): Promise<T>;
+  runExclusive<T>(params: TAcquireParams, fn: TExclusiveCallback<T>): Promise<T>;
 
     /**
    * Wait for the mutex to be unlocked
@@ -113,7 +113,7 @@ export interface IMutex {
   waitForUnlock(): Promise<void>;
 }
 
-export interface IReleaser<T extends AcquireToken = AcquireToken> {
+export interface IReleaser<T extends TAcquireToken = TAcquireToken> {
   /**
    * Release the acquired resource
    */
@@ -134,7 +134,7 @@ export interface IDistributedSemaphore extends Omit<ISemaphore, "acquire"> {
 
   isDestroyed: boolean;
 
-  acquire(params?: AcquireParams): Promise<IReleaser<SemaphoreToken>>;
+  acquire(params?: TAcquireParams): Promise<IReleaser<TSemaphoreToken>>;
 }
 
 export interface IDistributedMutex extends Omit<IMutex, "acquire"> {
@@ -146,10 +146,10 @@ export interface IDistributedMutex extends Omit<IMutex, "acquire"> {
 
   isDestroyed: boolean;
 
-  acquire(params?: AcquireParams): Promise<IReleaser<MutexToken>>;
+  acquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken>>;
 }
 
-export type DistributedSemaphoreConstructorProps = {
+export type TDistributedSemaphoreConstructorProps = {
   /**
    * Maximum number of concurrent acquisitions allowed
    * Must be greater than 0
@@ -163,17 +163,13 @@ export type DistributedSemaphoreConstructorProps = {
   name: string;
 };
 
-export type DistributedMutexConstructorProps = {
+export type TDistributedMutexConstructorProps = {
   /**
    * Unique name for this distributed mutex
    * Used to identify the mutex across processes
    */
   name: string;
 };
-
-export type DistributedSemaphoreFactory = (props: DistributedSemaphoreConstructorProps) => IDistributedSemaphore;
-
-export type DistributedMutexFactory = (props: DistributedMutexConstructorProps) => IDistributedMutex;
 
 /**
  * Interface for a read-write lock
@@ -195,14 +191,14 @@ export interface IReadWriteLock {
    * @param params Optional acquisition parameters
    * @returns A releaser that can be used to release the read lock
    */
-  acquireRead(params?: AcquireParams): Promise<IReleaser<ReadLockToken>>;
+  acquireRead(params?: TAcquireParams): Promise<IReleaser<TReadLockToken>>;
 
   /**
    * Acquire a write lock. Only one writer can hold the lock, and no readers can hold it concurrently.
    * @param params Optional acquisition parameters
    * @returns A releaser that can be used to release the write lock
    */
-  acquireWrite(params?: AcquireParams): Promise<IReleaser<WriteLockToken>>;
+  acquireWrite(params?: TAcquireParams): Promise<IReleaser<TWriteLockToken>>;
 
   /**
    * Cancel all pending acquisitions
@@ -214,27 +210,27 @@ export interface IReadWriteLock {
    * Run a callback with shared read access
    * @param fn The callback to run
    */
-  withReadLock<T>(fn: ExclusiveCallback<T>): Promise<T>;
+  withReadLock<T>(fn: TExclusiveCallback<T>): Promise<T>;
 
   /**
    * Run a callback with shared read access
    * @param params Acquisition parameters
    * @param fn The callback to run
    */
-  withReadLock<T>(params: AcquireParams, fn: ExclusiveCallback<T>): Promise<T>;
+  withReadLock<T>(params: TAcquireParams, fn: TExclusiveCallback<T>): Promise<T>;
 
   /**
    * Run a callback with exclusive write access
    * @param fn The callback to run
    */
-  withWriteLock<T>(fn: ExclusiveCallback<T>): Promise<T>;
+  withWriteLock<T>(fn: TExclusiveCallback<T>): Promise<T>;
 
   /**
    * Run a callback with exclusive write access
    * @param params Acquisition parameters
    * @param fn The callback to run
    */
-  withWriteLock<T>(params: AcquireParams, fn: ExclusiveCallback<T>): Promise<T>;
+  withWriteLock<T>(params: TAcquireParams, fn: TExclusiveCallback<T>): Promise<T>;
 
   /**
    * Check if write access is currently locked
@@ -245,11 +241,6 @@ export interface IReadWriteLock {
    * Check if read access is currently locked
    */
   isReadLocked(): Promise<boolean>;
-
-  /**
-   * Get the current number of active read locks
-   */
-  activeReaders(): Promise<number>;
 }
 
 export interface IDistributedRWLock extends IReadWriteLock {
@@ -262,7 +253,7 @@ export interface IDistributedRWLock extends IReadWriteLock {
   isDestroyed: boolean;
 }
 
-export type RWLockConstructorProps = {
+export type TRWLockConstructorProps = {
   /**
    * Maximum number of concurrent readers allowed
    * Must be greater than 0
@@ -271,7 +262,7 @@ export type RWLockConstructorProps = {
   maxReaders?: number;
 };
 
-export type DistributedRWLockConstructorProps = {
+export type TDistributedRWLockConstructorProps = {
   /**
    * Unique name for this distributed read-write lock
    * Used to identify the lock across processes
@@ -286,5 +277,132 @@ export type DistributedRWLockConstructorProps = {
   maxReaders?: number;
 };
 
-export type DistributedRWLockFactory = (props: DistributedRWLockConstructorProps) => IDistributedRWLock;
+export enum ELockDisplayType {
+  Mutex = "mutex",
+  Semaphore = "semaphore",
+  RWLock = "rwlock"
+}
+
+/**
+ * Owns a set of named distributed locks: hands out the same instance for the
+ * same name while that lock is alive, answers whether a name is registered, and
+ * knows what it handed out so an application can list, cancel, or tear down
+ * everything on shutdown.
+ *
+ * Backend packages (Redis, Postgres, ...) implement this interface; the in-memory
+ * manager in this package is the process-local default.
+ */
+export interface IDistributedLockManager {
+  /**
+   * Returns the mutex registered under this name, creating it on first use.
+   */
+  mutex(name: string): IDistributedMutex;
+
+  /**
+   * Returns the semaphore registered under this name, creating it on first use.
+   *
+   * @throws LockConfigMismatchError if the name is already registered with a
+   * different maxCount.
+   */
+  semaphore(name: string, maxCount: number): IDistributedSemaphore;
+
+  /**
+   * Returns the read-write lock registered under this name, creating it on first
+   * use. Omitting maxReaders means "whatever the registered lock uses".
+   *
+   * @throws LockConfigMismatchError if maxReaders is given and differs from the
+   * value the lock was registered with.
+   */
+  readWriteLock(name: string, maxReaders?: number): IDistributedRWLock;
+
+  /**
+   * Whether a live mutex is registered under this name.
+   */
+  hasMutex(name: string): boolean;
+
+  /**
+   * Whether a live semaphore is registered under this name.
+   */
+  hasSemaphore(name: string): boolean;
+
+  /**
+   * Whether a live read-write lock is registered under this name.
+   */
+  hasRWLock(name: string): boolean;
+
+  /**
+   * Every lock this manager currently holds. Locks destroyed in the meantime are
+   * dropped rather than reported.
+   */
+  list(): TDistributedLockInfo[];
+
+  /**
+   * How many live locks this manager holds, optionally of one kind only.
+   */
+  count(kind?: ELockDisplayType): number;
+
+  /**
+   * Same as list(), plus the current state of every lock.
+   */
+  snapshot(): Promise<TDistributedLockSnapshot[]>;
+
+  /**
+   * Cancels everything waiting on every registered lock. Held locks stay held.
+   */
+  cancelAll(errMessage?: string): Promise<void>;
+
+  /**
+   * Destroys every registered lock and empties the manager.
+   */
+  destroyAll(errMessage?: string): Promise<void>;
+}
+
+/**
+ * Cheap synchronous description of a registered lock.
+ */
+export type TDistributedLockInfo = {
+  kind: ELockDisplayType;
+
+  /**
+   * The name the lock was registered under in the manager - not the (possibly
+   * prefixed) name the implementation uses internally.
+   */
+  name: string;
+
+  implementation: string;
+
+  isDestroyed: boolean;
+
+  /**
+   * Semaphores only.
+   */
+  maxCount?: number;
+
+  /**
+   * Read-write locks only, and only when it was requested explicitly.
+   */
+  maxReaders?: number;
+};
+
+/**
+ * Lock description together with its current state. Fields that do not apply to
+ * the lock kind - or that could not be read because the lock was destroyed
+ * concurrently - are left out.
+ */
+export type TDistributedLockSnapshot = TDistributedLockInfo & {
+  isLocked?: boolean;
+
+  freeCount?: number;
+
+  isWriteLocked?: boolean;
+
+  isReadLocked?: boolean;
+
+  activeReaders?: number;
+};
+
+export type TManagedLock =
+  | { kind: ELockDisplayType.Mutex; name: string; lock: IDistributedMutex; }
+  | { kind: ELockDisplayType.Semaphore; name: string; lock: IDistributedSemaphore; maxCount: number; }
+  | { kind: ELockDisplayType.RWLock; name: string; lock: IDistributedRWLock; maxReaders?: number; };
 

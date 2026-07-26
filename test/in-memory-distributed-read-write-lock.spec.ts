@@ -1,16 +1,15 @@
-import { beforeEach, describe, it } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert";
-import { DistributedReadWriteLock, InMemoryDistributedRegistry } from "../src";
+import {
+  InMemoryDistributedLockManager,
+  LockNotFoundError,
+} from "../src";
+import { InMemoryDistributedReadWriteLock } from "../src/in-memory-distributed/in-memory-distributed-read-write-lock";
 import { sleep } from "./utils";
-import { IReleaser, ReadLockToken, WriteLockToken } from "../src/types";
 
-describe("DistributedReadWriteLock (In Memory by default)", () => {
-  beforeEach(() => {
-    InMemoryDistributedRegistry.clearRWLockRegistry();
-  });
-
+describe("In-memory distributed read-write lock", () => {
   it("should immediately acquire write lock and release", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
     assert.strictEqual(await rwLock.isWriteLocked(), false);
 
     const releaser = await rwLock.acquireWrite();
@@ -21,7 +20,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should immediately acquire read lock and release", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
     assert.strictEqual(await rwLock.activeReaders(), 0);
 
     const releaser = await rwLock.acquireRead();
@@ -32,7 +31,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should allow multiple concurrent read locks", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     const releaser1 = await rwLock.acquireRead();
     const releaser2 = await rwLock.acquireRead();
@@ -51,7 +50,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should not allow write lock when read locks are active", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     const readReleaser = await rwLock.acquireRead();
 
@@ -79,7 +78,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should not allow read locks when write lock is active", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     const writeReleaser = await rwLock.acquireWrite();
 
@@ -107,7 +106,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should queue write locks", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     const writer1 = await rwLock.acquireWrite();
 
@@ -150,7 +149,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
 
   it("should respect maxReaders limit", async () => {
     const maxReaders = 3;
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1", maxReaders });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1", maxReaders });
 
     assert.strictEqual(await rwLock.maxReaders(), maxReaders);
 
@@ -187,7 +186,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should allow using withReadLock helper", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     let executed = false;
 
@@ -203,7 +202,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should allow using withWriteLock helper", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     let executed = false;
 
@@ -219,7 +218,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should handle withReadLock errors correctly", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     try {
       await rwLock.withReadLock(async () => {
@@ -236,7 +235,7 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
   });
 
   it("should handle withWriteLock errors correctly", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "rwlock1" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "rwlock1" });
 
     try {
       await rwLock.withWriteLock(async () => {
@@ -251,66 +250,30 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
     assert.strictEqual(await rwLock.isWriteLocked(), false);
   });
 
-  it("should share state between two instances with the same name", async () => {
-    const name = "sharedRWLock";
-    const rwLock1 = new DistributedReadWriteLock({ name });
-    const rwLock2 = new DistributedReadWriteLock({ name });
+  it("should share state through the manager for the same name", async () => {
+    const manager = new InMemoryDistributedLockManager();
+    const rwLock1 = manager.readWriteLock("sharedRWLock");
+    const rwLock2 = manager.readWriteLock("sharedRWLock");
 
-    assert.strictEqual(await rwLock1.isWriteLocked(), false);
-    assert.strictEqual(await rwLock2.isWriteLocked(), false);
+    assert.strictEqual(rwLock1, rwLock2);
 
     const writeReleaser = await rwLock1.acquireWrite();
-    assert.strictEqual(await rwLock1.isWriteLocked(), true);
     assert.strictEqual(await rwLock2.isWriteLocked(), true);
-
-    let rwLock2Acquired = false;
-    let releaser2!: IReleaser<WriteLockToken>;
-    
-    const acquirePromise = rwLock2.acquireWrite().then((rel) => {
-      releaser2 = rel;
-      rwLock2Acquired = true;
-      return rel;
-    });
-
-    await sleep(50);
-    assert.strictEqual(rwLock2Acquired, false, "rwLock2 write acquire should be pending");
 
     await writeReleaser.release();
-    await acquirePromise;
-    
-    assert.strictEqual(rwLock2Acquired, true, "rwLock2 should acquire after rwLock1 releases");
-    assert.strictEqual(await rwLock1.isWriteLocked(), true);
-    assert.strictEqual(await rwLock2.isWriteLocked(), true);
-
-    await releaser2.release();
-    assert.strictEqual(await rwLock1.isWriteLocked(), false);
     assert.strictEqual(await rwLock2.isWriteLocked(), false);
-  });
-
-  it("should share read locks between two instances with the same name", async () => {
-    const name = "sharedReadRWLock";
-    const rwLock1 = new DistributedReadWriteLock({ name });
-    const rwLock2 = new DistributedReadWriteLock({ name });
 
     const reader1 = await rwLock1.acquireRead();
-    assert.strictEqual(await rwLock1.activeReaders(), 1);
-    assert.strictEqual(await rwLock2.activeReaders(), 1);
-
     const reader2 = await rwLock2.acquireRead();
     assert.strictEqual(await rwLock1.activeReaders(), 2);
-    assert.strictEqual(await rwLock2.activeReaders(), 2);
 
     await reader1.release();
-    assert.strictEqual(await rwLock1.activeReaders(), 1);
-    assert.strictEqual(await rwLock2.activeReaders(), 1);
-
     await reader2.release();
     assert.strictEqual(await rwLock1.activeReaders(), 0);
-    assert.strictEqual(await rwLock2.activeReaders(), 0);
   });
 
   it("should cancel all pending acquisitions", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "cancelRWLock" });
+    const rwLock = new InMemoryDistributedReadWriteLock({ name: "cancelRWLock" });
     const writeReleaser = await rwLock.acquireWrite();
 
     let error1: Error | undefined, error2: Error | undefined;
@@ -330,31 +293,30 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
     await writeReleaser.release();
   });
 
-  it("should destroy the read-write lock and remove it from the registry", async () => {
+  it("should destroy the read-write lock and reject further acquires", async () => {
     const name = "destroyRWLock";
-    const rwLock = new DistributedReadWriteLock({ name });
-
-    assert.strictEqual(InMemoryDistributedRegistry.hasRWLock(`rwlock:${name}`), true);
+    const rwLock = new InMemoryDistributedReadWriteLock({ name });
 
     await rwLock.destroy();
     assert.strictEqual(rwLock.isDestroyed, true, "RWLock should be marked as destroyed");
-    assert.strictEqual(InMemoryDistributedRegistry.hasRWLock(`rwlock:${name}`), false);
 
     await assert.rejects(
       async () => rwLock.acquireRead(),
       /does not exist/,
-      "Acquiring read lock after destroy should throw an error"
+      "Acquiring read lock after destroy should throw an error",
     );
 
     await assert.rejects(
       async () => rwLock.acquireWrite(),
       /does not exist/,
-      "Acquiring write lock after destroy should throw an error"
+      "Acquiring write lock after destroy should throw an error",
     );
   });
 
   it("should return appropriate token types for read and write locks", async () => {
-    const rwLock = new DistributedReadWriteLock({ name: "tokenRWLock" });
+    const rwLock = new InMemoryDistributedReadWriteLock({
+      name: "tokenRWLock",
+    });
 
     const readReleaser = await rwLock.acquireRead();
     const readToken = readReleaser.getToken();
@@ -368,4 +330,54 @@ describe("DistributedReadWriteLock (In Memory by default)", () => {
 
     await writeReleaser.release();
   });
-}); 
+
+  it("should treat destroy as idempotent", async () => {
+    const rwLock = new InMemoryDistributedReadWriteLock({
+      name: "destroyTwice",
+    });
+
+    await rwLock.destroy();
+    await rwLock.destroy();
+
+    assert.strictEqual(rwLock.isDestroyed, true);
+  });
+
+  it("should not attach an old handle to a lock recreated under the same name via the manager", async () => {
+    const manager = new InMemoryDistributedLockManager();
+    const oldHandle = manager.readWriteLock("recreated");
+
+    const heldOnOldGeneration = await oldHandle.acquireWrite();
+    await oldHandle.destroy();
+
+    assert.strictEqual(manager.hasRWLock("recreated"), false);
+
+    const newHandle = manager.readWriteLock("recreated");
+    assert.notStrictEqual(newHandle, oldHandle);
+    assert.strictEqual(await newHandle.isWriteLocked(), false);
+
+    assert.strictEqual(oldHandle.isDestroyed, true);
+    await assert.rejects(() => oldHandle.acquireWrite(), LockNotFoundError);
+
+    await heldOnOldGeneration.release();
+    assert.strictEqual(await newHandle.isWriteLocked(), false);
+  });
+
+  it("should create independent locks for the same name outside a manager", async () => {
+    const first = new InMemoryDistributedReadWriteLock({
+      name: "alone",
+    });
+    const second = new InMemoryDistributedReadWriteLock({
+      name: "alone",
+    });
+
+    const releaser = await first.acquireWrite();
+    assert.strictEqual(await first.isWriteLocked(), true);
+    assert.strictEqual(await second.isWriteLocked(), false);
+
+    await first.destroy();
+    assert.strictEqual(first.isDestroyed, true);
+    assert.strictEqual(second.isDestroyed, false);
+
+    await releaser.release();
+  });
+});

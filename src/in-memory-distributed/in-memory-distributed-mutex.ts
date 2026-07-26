@@ -1,64 +1,103 @@
+import assert from "node:assert";
+import crypto from "node:crypto";
 import {
-  AcquireParams,
-  DistributedMutexConstructorProps,
+  ELockDisplayType,
   IDistributedMutex,
   IReleaser,
-  MutexToken,
-  SemaphoreToken
+  TAcquireParams,
+  TDistributedMutexConstructorProps,
+  TMutexToken,
 } from "../types";
-import { InMemoryDistributedSemaphore } from "./in-memory-distributed-semaphore";
-import { inMemoryDistributedMutexRegistry } from "./in-memory-distributed-registry";
-import crypto from "node:crypto";
+import { Semaphore } from "../semaphore";
+import { LockNotFoundError } from "../errors";
 
 export class InMemoryDistributedMutex implements IDistributedMutex {
-  private readonly _inMemoryDistributedSemaphore: InMemoryDistributedSemaphore;
+  public readonly name: string;
+  public readonly implementation: string = "in-memory";
 
-  public constructor(props: DistributedMutexConstructorProps) {
-    this._inMemoryDistributedSemaphore = new InMemoryDistributedSemaphore(
-      {
-        maxCount: 1,
-        name: props.name
-      },
-      inMemoryDistributedMutexRegistry,
-      "mutex"
+  private readonly semaphore: Semaphore;
+  private destroyed: boolean = false;
+
+  public constructor(props: TDistributedMutexConstructorProps) {
+    assert.ok(
+      props.name,
+      "InMemoryDistributedMutex requires a non-empty name.",
     );
+
+    this.name = `${ELockDisplayType.Mutex}:${props.name}`;
+    this.semaphore = new Semaphore(1);
+  }
+
+  public get isDestroyed(): boolean {
+    return this.destroyed;
+  }
+
+  public async acquire(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TMutexToken>> {
+    const token = `${this.name}:${crypto.randomUUID()}` as TMutexToken;
+
+    const releaser = await this.ensureAlive().acquire(params, token);
+
+    return releaser as unknown as IReleaser<TMutexToken>;
+  }
+
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
+  public async runExclusive<T>(
+    params: TAcquireParams,
+    fn: () => Promise<T> | T,
+  ): Promise<T>;
+  public async runExclusive<T>(...args: any[]): Promise<T> {
+    let callback: () => Promise<T> | T;
+    let params: TAcquireParams | undefined;
+
+    if (args.length === 1) {
+      callback = args[0];
+    } else {
+      params = args[0];
+      callback = args[1];
+    }
+
+    const releaser = await this.acquire(params);
+    try {
+      return await callback();
+    } finally {
+      await releaser.release();
+    }
+  }
+
+  public async cancel(errMessage?: string): Promise<void> {
+    return this.ensureAlive().cancelAll(errMessage ?? "Mutex cancelled");
+  }
+
+  public async isLocked(): Promise<boolean> {
+    return this.ensureAlive().isLocked();
   }
 
   public async waitForUnlock(): Promise<void> {
-    return this._inMemoryDistributedSemaphore.waitForAnyUnlock();
+    return this.ensureAlive().waitForAnyUnlock();
   }
 
-  public get name(): string {
-    return this._inMemoryDistributedSemaphore.name;
-  };
+  /**
+   * Destroying is idempotent and never throws for an already destroyed lock:
+   * tearing something down twice is not an error.
+   */
+  public async destroy(message?: string): Promise<void> {
+    if (this.destroyed) {
+      return;
+    }
 
-  public get isDestroyed() {
-    return this._inMemoryDistributedSemaphore.isDestroyed;
+    this.destroyed = true;
+    await this.semaphore.dispose(message ?? "Mutex destroyed");
   }
 
-  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
-  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
-  public async runExclusive<T>(...args: any[]): Promise<T> {
-    // @ts-ignore
-    return this._inMemoryDistributedSemaphore.runExclusive(...args);
-  }
+  private ensureAlive(): Semaphore {
+    if (this.destroyed) {
+      throw new LockNotFoundError(
+        `${ELockDisplayType.Mutex} '${this.name}' does not exist`,
+      );
+    }
 
-  public readonly implementation: string = "in-memory";
-
-  public async destroy(): Promise<void> {
-    return this._inMemoryDistributedSemaphore.destroy("Mutex destroyed");
-  }
-
-  public acquire(params?: { timeoutMs?: number; }, acquireToken?: MutexToken): Promise<IReleaser<MutexToken>> {
-    const token = `${this.name}:${crypto.randomUUID()}` as MutexToken;
-    return this._inMemoryDistributedSemaphore.acquire(params, (acquireToken ?? token) as unknown as SemaphoreToken) as unknown as Promise<IReleaser<MutexToken>>;
-  }
-
-  public cancel(errMessage?: string): Promise<void> {
-    return this._inMemoryDistributedSemaphore.cancelAll(errMessage);
-  }
-
-  public isLocked(): Promise<boolean> {
-    return this._inMemoryDistributedSemaphore.isLocked();
+    return this.semaphore;
   }
 }

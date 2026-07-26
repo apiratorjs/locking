@@ -1,50 +1,68 @@
+import assert from "node:assert";
 import crypto from "node:crypto";
 import {
-  AcquireParams,
-  DistributedSemaphoreConstructorProps,
+  ELockDisplayType,
   IDistributedSemaphore,
   IReleaser,
-  SemaphoreToken
+  TAcquireParams,
+  TDistributedSemaphoreConstructorProps,
+  TSemaphoreToken,
 } from "../types";
 import { Semaphore } from "../semaphore";
 import { LockNotFoundError } from "../errors";
 
 export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
-  public readonly maxCount!: number;
-  public readonly name!: string;
+  public readonly maxCount: number;
+  public readonly name: string;
+  public readonly implementation: string = "in-memory";
 
-  private _isDestroyed: boolean = false;
+  private readonly semaphore: Semaphore;
+  private destroyed: boolean = false;
 
-  public constructor(
-    props: DistributedSemaphoreConstructorProps,
-    private readonly _registry: Map<string, Semaphore>,
-    private readonly _type = "semaphore"
-  ) {
+  public constructor(props: TDistributedSemaphoreConstructorProps) {
+    assert.ok(
+      props.name,
+      "InMemoryDistributedSemaphore requires a non-empty name.",
+    );
+    assert.ok(props.maxCount > 0, "maxCount must be greater than 0");
+
+    this.name = `${ELockDisplayType.Semaphore}:${props.name}`;
     this.maxCount = props.maxCount;
-    this.name = `${_type}:${props.name}`;
+    this.semaphore = new Semaphore(props.maxCount);
+  }
 
-    if (!this._registry.has(this.name)) {
-      this._registry.set(this.name, new Semaphore(this.maxCount));
-    }
+  public get isDestroyed(): boolean {
+    return this.destroyed;
   }
 
   public async waitForFullyUnlock(): Promise<void> {
-    return this.getSemaphoreOrException().waitForFullyUnlock();
+    return this.ensureAlive().waitForFullyUnlock();
   }
 
   public async waitForAnyUnlock(): Promise<void> {
-    return this.getSemaphoreOrException().waitForAnyUnlock();
+    return this.ensureAlive().waitForAnyUnlock();
   }
 
-  get isDestroyed() {
-    return this._isDestroyed;
+  public async freeCount(): Promise<number> {
+    return this.ensureAlive().freeCount();
   }
 
-  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
-  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async acquire(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TSemaphoreToken>> {
+    const token = `${this.name}:${crypto.randomUUID()}` as TSemaphoreToken;
+
+    return this.ensureAlive().acquire(params, token);
+  }
+
+  public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
+  public async runExclusive<T>(
+    params: TAcquireParams,
+    fn: () => Promise<T> | T,
+  ): Promise<T>;
   public async runExclusive<T>(...args: any[]): Promise<T> {
     let callback: () => Promise<T> | T;
-    let params: AcquireParams | undefined;
+    let params: TAcquireParams | undefined;
 
     if (args.length === 1) {
       callback = args[0];
@@ -61,40 +79,34 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     }
   }
 
-  public async destroy(message?: string): Promise<void> {
-    const semaphore = this.getSemaphoreOrException();
-    this._isDestroyed = true;
-    this._registry.delete(this.name);
-    await semaphore.cancelAll(message ?? "Semaphore destroyed");
-  }
-
-  public readonly implementation: string = "in-memory";
-
-  public async freeCount(): Promise<number> {
-    return this.getSemaphoreOrException().freeCount();
-  }
-
-  public async acquire(params?: {
-    timeoutMs?: number;
-  }, acquireToken?: SemaphoreToken): Promise<IReleaser<SemaphoreToken>> {
-    const token = `${this.name}:${crypto.randomUUID()}` as SemaphoreToken;
-    return this.getSemaphoreOrException().acquire(params, acquireToken ?? token);
-  }
-
   public async cancelAll(errMessage?: string): Promise<void> {
-    return this.getSemaphoreOrException().cancelAll(errMessage);
+    return this.ensureAlive().cancelAll(errMessage);
   }
 
   public async isLocked(): Promise<boolean> {
-    return this.getSemaphoreOrException().isLocked();
+    return this.ensureAlive().isLocked();
   }
 
-  private getSemaphoreOrException(): Semaphore {
-    const semaphore = this._registry.get(this.name);
-    if (!semaphore) {
-      throw new LockNotFoundError(`${this._type} '${this.name}' does not exist`);
+  /**
+   * Destroying is idempotent and never throws for an already destroyed lock:
+   * tearing something down twice is not an error.
+   */
+  public async destroy(message?: string): Promise<void> {
+    if (this.destroyed) {
+      return;
     }
 
-    return semaphore;
+    this.destroyed = true;
+    await this.semaphore.dispose(message ?? "Semaphore destroyed");
+  }
+
+  private ensureAlive(): Semaphore {
+    if (this.destroyed) {
+      throw new LockNotFoundError(
+        `${ELockDisplayType.Semaphore} '${this.name}' does not exist`,
+      );
+    }
+
+    return this.semaphore;
   }
 }

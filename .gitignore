@@ -15,3 +15,5 @@ dist/
 # Ignore Redis data directory
 redis-data/
 .npmrc
+
+.claude

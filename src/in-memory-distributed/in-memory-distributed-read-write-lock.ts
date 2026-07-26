@@ -1,49 +1,70 @@
+import assert from "node:assert";
 import {
-  AcquireParams,
-  DistributedRWLockConstructorProps,
-  ExclusiveCallback,
+  ELockDisplayType,
   IDistributedRWLock,
   IReleaser,
-  ReadLockToken,
-  WriteLockToken
+  TAcquireParams,
+  TDistributedRWLockConstructorProps,
+  TExclusiveCallback,
+  TReadLockToken,
+  TWriteLockToken,
 } from "../types";
 import { ReadWriteLock } from "../read-write-lock";
-import { inMemoryDistributedRWLockRegistry } from "./in-memory-distributed-registry";
 import { LockNotFoundError } from "../errors";
 
 export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
-  public readonly name!: string;
-  private _isDestroyed: boolean = false;
+  public readonly name: string;
+  public readonly implementation: string = "in-memory";
 
-  public constructor(
-    props: DistributedRWLockConstructorProps,
-    private readonly _registry: Map<string, ReadWriteLock> = inMemoryDistributedRWLockRegistry,
-    private readonly _type = "rwlock"
-  ) {
-    this.name = `${_type}:${props.name}`;
+  private readonly rwLock: ReadWriteLock;
+  private destroyed: boolean = false;
 
-    if (!this._registry.has(this.name)) {
-      this._registry.set(this.name, new ReadWriteLock({ maxReaders: props.maxReaders }));
-    }
+  public constructor(props: TDistributedRWLockConstructorProps) {
+    assert.ok(
+      props.name,
+      "InMemoryDistributedReadWriteLock requires a non-empty name.",
+    );
+    assert.ok(
+      props.maxReaders === undefined || props.maxReaders > 0,
+      "maxReaders must be greater than 0",
+    );
+
+    this.name = `${ELockDisplayType.RWLock}:${props.name}`;
+    this.rwLock = new ReadWriteLock({ maxReaders: props.maxReaders });
   }
 
-  get isDestroyed() {
-    return this._isDestroyed;
+  public get isDestroyed(): boolean {
+    return this.destroyed;
   }
 
   public async maxReaders(): Promise<number> {
-    return this.getRWLockOrException().maxReaders();
+    return this.ensureAlive().maxReaders();
   }
 
   public async activeReaders(): Promise<number> {
-    return this.getRWLockOrException().activeReaders();
+    return this.ensureAlive().activeReaders();
   }
 
-  public async withReadLock<T>(fn: ExclusiveCallback<T>): Promise<T>;
-  public async withReadLock<T>(params: AcquireParams, fn: ExclusiveCallback<T>): Promise<T>;
+  public async acquireRead(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TReadLockToken>> {
+    return this.ensureAlive().acquireRead(params);
+  }
+
+  public async acquireWrite(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TWriteLockToken>> {
+    return this.ensureAlive().acquireWrite(params);
+  }
+
+  public async withReadLock<T>(fn: TExclusiveCallback<T>): Promise<T>;
+  public async withReadLock<T>(
+    params: TAcquireParams,
+    fn: TExclusiveCallback<T>,
+  ): Promise<T>;
   public async withReadLock<T>(...args: any[]): Promise<T> {
-    let callback: ExclusiveCallback<T>;
-    let params: AcquireParams | undefined;
+    let callback: TExclusiveCallback<T>;
+    let params: TAcquireParams | undefined;
 
     if (args.length === 1) {
       callback = args[0];
@@ -52,7 +73,7 @@ export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
       callback = args[1];
     }
 
-    const rwLock = this.getRWLockOrException();
+    const rwLock = this.ensureAlive();
     if (params) {
       return rwLock.withReadLock(params, callback);
     } else {
@@ -60,11 +81,14 @@ export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
     }
   }
 
-  public async withWriteLock<T>(fn: ExclusiveCallback<T>): Promise<T>;
-  public async withWriteLock<T>(params: AcquireParams, fn: ExclusiveCallback<T>): Promise<T>;
+  public async withWriteLock<T>(fn: TExclusiveCallback<T>): Promise<T>;
+  public async withWriteLock<T>(
+    params: TAcquireParams,
+    fn: TExclusiveCallback<T>,
+  ): Promise<T>;
   public async withWriteLock<T>(...args: any[]): Promise<T> {
-    let callback: ExclusiveCallback<T>;
-    let params: AcquireParams | undefined;
+    let callback: TExclusiveCallback<T>;
+    let params: TAcquireParams | undefined;
 
     if (args.length === 1) {
       callback = args[0];
@@ -73,7 +97,7 @@ export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
       callback = args[1];
     }
 
-    const rwLock = this.getRWLockOrException();
+    const rwLock = this.ensureAlive();
     if (params) {
       return rwLock.withWriteLock(params, callback);
     } else {
@@ -81,41 +105,38 @@ export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
     }
   }
 
-  public async destroy(message?: string): Promise<void> {
-    const rwLock = this.getRWLockOrException();
-    this._isDestroyed = true;
-    this._registry.delete(this.name);
-    await rwLock.cancelAll(message ?? "ReadWriteLock destroyed");
-  }
-
-  public readonly implementation: string = "in-memory";
-
-  public async acquireRead(params?: AcquireParams): Promise<IReleaser<ReadLockToken>> {
-    return this.getRWLockOrException().acquireRead(params);
-  }
-
-  public async acquireWrite(params?: AcquireParams): Promise<IReleaser<WriteLockToken>> {
-    return this.getRWLockOrException().acquireWrite(params);
-  }
-
   public async cancelAll(errMessage?: string): Promise<void> {
-    return this.getRWLockOrException().cancelAll(errMessage);
+    return this.ensureAlive().cancelAll(errMessage);
   }
 
   public async isReadLocked(): Promise<boolean> {
-    return this.getRWLockOrException().isReadLocked();
+    return this.ensureAlive().isReadLocked();
   }
 
   public async isWriteLocked(): Promise<boolean> {
-    return this.getRWLockOrException().isWriteLocked();
+    return this.ensureAlive().isWriteLocked();
   }
 
-  private getRWLockOrException(): ReadWriteLock {
-    const rwLock = this._registry.get(this.name);
-    if (!rwLock) {
-      throw new LockNotFoundError(`${this._type} '${this.name}' does not exist`);
+  /**
+   * Destroying is idempotent and never throws for an already destroyed lock:
+   * tearing something down twice is not an error.
+   */
+  public async destroy(message?: string): Promise<void> {
+    if (this.destroyed) {
+      return;
     }
 
-    return rwLock;
+    this.destroyed = true;
+    await this.rwLock.cancelAll(message ?? "ReadWriteLock destroyed");
   }
-} 
+
+  private ensureAlive(): ReadWriteLock {
+    if (this.destroyed) {
+      throw new LockNotFoundError(
+        `${ELockDisplayType.RWLock} '${this.name}' does not exist`,
+      );
+    }
+
+    return this.rwLock;
+  }
+}

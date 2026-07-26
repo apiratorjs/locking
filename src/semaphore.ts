@@ -1,49 +1,62 @@
 import assert from "node:assert";
 import crypto from "node:crypto";
-import { AcquireParams, IDeferred, IReleaser, ISemaphore, SemaphoreToken } from "./types";
+import { IDeferred, IReleaser, ISemaphore, TAcquireParams, TAcquireToken, TSemaphoreToken } from "./types";
 import { DEFAULT_TIMEOUT_IN_MS } from "./constants";
 import { CancelledLockingError, TimeoutLockingError } from "./errors";
+import { unrefTimer } from "./utils";
 
-class Releaser implements IReleaser<SemaphoreToken> {
-  constructor(
-    private readonly _onRelease: () => Promise<void>,
-    private readonly _token: SemaphoreToken
+class Releaser implements IReleaser<TSemaphoreToken> {
+  private isReleased: boolean = false;
+
+  public constructor(
+    private readonly onRelease: () => Promise<void>,
+    private readonly token: TSemaphoreToken
   ) {}
 
+  /**
+   * Releasing is idempotent: one releaser owns exactly one permit, so repeated
+   * calls must not hand extra permits back to the semaphore.
+   */
   public async release(): Promise<void> {
-    await this._onRelease();
+    if (this.isReleased) {
+      return;
+    }
+
+    this.isReleased = true;
+
+    await this.onRelease();
   }
 
-  public getToken(): SemaphoreToken {
-    return this._token;
+  public getToken(): TSemaphoreToken {
+    return this.token;
   }
 }
 
 export class Semaphore implements ISemaphore {
   public readonly maxCount: number;
 
-  private _freeCount: number;
-  private _queue: IDeferred[];
-  private _waitingForAnyUnlockListeners: IDeferred[];
-  private _waitingForFullyUnlockListeners: IDeferred[];
+  private availablePermits: number;
+  private queue: IDeferred[];
+  private anyUnlockListeners: IDeferred[];
+  private fullyUnlockListeners: IDeferred[];
 
   public constructor(maxCount: number) {
     assert.ok(maxCount > 0, "maxCount must be greater than 0");
 
     this.maxCount = maxCount;
-    this._freeCount = maxCount;
-    this._queue = [];
-    this._waitingForAnyUnlockListeners = [];
-    this._waitingForFullyUnlockListeners = [];
+    this.availablePermits = maxCount;
+    this.queue = [];
+    this.anyUnlockListeners = [];
+    this.fullyUnlockListeners = [];
   }
 
   public async waitForFullyUnlock(): Promise<void> {
-    if (this.maxCount === this._freeCount) {
+    if (this.maxCount === this.availablePermits) {
       return;
     }
 
     return new Promise<void>((resolve, reject) => {
-      this._waitingForFullyUnlockListeners.push({
+      this.fullyUnlockListeners.push({
         resolve,
         reject
       });
@@ -51,12 +64,12 @@ export class Semaphore implements ISemaphore {
   }
 
   public async waitForAnyUnlock(): Promise<void> {
-    if (this._freeCount > 0) {
+    if (this.availablePermits > 0) {
       return;
     }
 
     return new Promise<void>((resolve, reject) => {
-      this._waitingForAnyUnlockListeners.push({
+      this.anyUnlockListeners.push({
         resolve,
         reject
       });
@@ -64,10 +77,10 @@ export class Semaphore implements ISemaphore {
   }
 
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
-  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(params: TAcquireParams, fn: () => Promise<T> | T): Promise<T>
   public async runExclusive<T>(...args: any[]): Promise<T> {
     let callback: () => Promise<T> | T;
-    let params: AcquireParams | undefined;
+    let params: TAcquireParams | undefined;
 
     if (args.length === 1) {
       callback = args[0];
@@ -85,92 +98,115 @@ export class Semaphore implements ISemaphore {
   }
 
   public async freeCount(): Promise<number> {
-    return this._freeCount;
+    return this.availablePermits;
   }
 
-  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: string): Promise<IReleaser<SemaphoreToken>> {
-    const timeoutMs = params?.timeoutMs || DEFAULT_TIMEOUT_IN_MS;
+  /**
+   * @param acquireToken Identity for this acquisition. Layers built on top of a
+   * semaphore - a distributed mutex, for instance - pass their own token, so that
+   * one acquisition has one identity all the way down instead of the caller seeing
+   * one token while the releaser holds another. Left out, a fresh uuid is used.
+   */
+  public async acquire(params?: TAcquireParams, acquireToken?: TAcquireToken): Promise<IReleaser<TSemaphoreToken>> {
+    const timeoutMs = params?.timeoutMs ?? DEFAULT_TIMEOUT_IN_MS;
 
-    const token = (acquireToken ?? crypto.randomUUID()) as SemaphoreToken;
+    const token = (acquireToken ?? crypto.randomUUID()) as TSemaphoreToken;
     const releaser = new Releaser(this.release.bind(this), token);
 
-    if (this._freeCount > 0) {
-      this._freeCount--;
+    if (this.availablePermits > 0) {
+      this.availablePermits--;
       return releaser;
     }
 
-    return new Promise<IReleaser<SemaphoreToken>>((resolve, reject) => {
+    return new Promise<IReleaser<TSemaphoreToken>>((resolve, reject) => {
       const timer = setTimeout(() => {
-        const index = this._queue.indexOf(deferred);
+        const index = this.queue.indexOf(deferred);
         if (index !== -1) {
-          this._queue.splice(index, 1);
+          this.queue.splice(index, 1);
         }
 
         reject(new TimeoutLockingError("Timeout acquiring semaphore"));
       }, timeoutMs);
 
+      // A pending acquisition must not keep the process alive on its own: only
+      // code already running can release the permit this waiter is after.
+      unrefTimer(timer);
+
       const deferred: IDeferred = {
         resolve: () => {
-          if (timer) {
-            clearTimeout(timer);
-          }
+          clearTimeout(timer);
           resolve(releaser);
         },
         reject: (err) => {
-          if (timer) {
-            clearTimeout(timer);
-          }
+          clearTimeout(timer);
           reject(err);
         }
       };
 
-      this._queue.push(deferred);
+      this.queue.push(deferred);
     });
   }
 
+  /**
+   * Cancels pending acquisitions.
+   *
+   * Permits that are already held stay held: their owners are still inside their
+   * critical sections, and handing their permits back here would let extra
+   * acquirers in alongside them.
+   *
+   * Unlock listeners (waitForAnyUnlock / waitForFullyUnlock) keep waiting - the
+   * semaphore is still alive and will notify them once permits come back.
+   */
   public async cancelAll(errMessage?: string): Promise<void> {
-    const cancellationList = [...this._queue];
+    const cancellationList = [...this.queue];
+    this.queue = [];
 
-    await Promise.all(cancellationList.map(deferred => deferred.reject(new CancelledLockingError(errMessage ?? "Semaphore cancelled"))));
+    cancellationList.forEach(deferred => deferred.reject(new CancelledLockingError(errMessage ?? "Semaphore cancelled")));
+  }
 
-    this._queue = [];
-    this._freeCount = this.maxCount;
+  /**
+   * Called when the semaphore itself goes away: pending acquisitions are
+   * cancelled and unlock listeners are resolved, because a semaphore that no
+   * longer exists cannot be held by anybody. Resolving rather than rejecting also
+   * keeps a fire-and-forget `void sem.waitForAnyUnlock()` from turning into an
+   * unhandled rejection.
+   */
+  public async dispose(errMessage?: string): Promise<void> {
+    await this.cancelAll(errMessage);
 
-    // Notify all waitingForAnyUnlockListeners listeners since we're resetting to unlocked state
-    const waitingForAnyUnlockListeners = [...this._waitingForAnyUnlockListeners];
-    this._waitingForAnyUnlockListeners = [];
-    waitingForAnyUnlockListeners.forEach(listener => listener.reject(new CancelledLockingError(errMessage ?? "Semaphore cancelled")));
+    const anyUnlockWaiters = [...this.anyUnlockListeners];
+    this.anyUnlockListeners = [];
+    anyUnlockWaiters.forEach(listener => listener.resolve());
 
-    // Notify all waitingForFullyUnlockListeners listeners since we're resetting to unlocked state
-    const fullyUnlockListeners = [...this._waitingForFullyUnlockListeners];
-    this._waitingForFullyUnlockListeners = [];
-    fullyUnlockListeners.forEach(listener => listener.reject(new CancelledLockingError(errMessage ?? "Semaphore cancelled")));
+    const fullyUnlockWaiters = [...this.fullyUnlockListeners];
+    this.fullyUnlockListeners = [];
+    fullyUnlockWaiters.forEach(listener => listener.resolve());
   }
 
   public async isLocked(): Promise<boolean> {
-    return this._freeCount === 0;
+    return this.availablePermits === 0;
   }
 
   private async release(): Promise<void> {
-    if (this._freeCount === this.maxCount) {
+    if (this.availablePermits === this.maxCount) {
       return;
     }
 
-    if (this._queue.length > 0) {
-      const { resolve } = this._queue.shift()!;
+    if (this.queue.length > 0) {
+      const { resolve } = this.queue.shift()!;
       resolve();
     } else {
-      this._freeCount++;
+      this.availablePermits++;
 
-      if (this._freeCount > 0 && this._waitingForAnyUnlockListeners.length > 0) {
-        const listeners = [...this._waitingForAnyUnlockListeners];
-        this._waitingForAnyUnlockListeners = [];
+      if (this.anyUnlockListeners.length > 0) {
+        const listeners = [...this.anyUnlockListeners];
+        this.anyUnlockListeners = [];
         listeners.forEach(listener => listener.resolve());
       }
 
-      if (this._freeCount === this.maxCount) {
-        const listeners = [...this._waitingForFullyUnlockListeners];
-        this._waitingForFullyUnlockListeners = [];
+      if (this.availablePermits === this.maxCount) {
+        const listeners = [...this.fullyUnlockListeners];
+        this.fullyUnlockListeners = [];
         listeners.forEach(listener => listener.resolve());
       }
     }

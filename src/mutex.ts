@@ -1,39 +1,36 @@
 import { Semaphore } from "./semaphore";
-import { AcquireParams, IMutex, IReleaser, MutexToken } from "./types";
+import { TAcquireParams, IMutex, IReleaser, TMutexToken } from "./types";
 
 export class Mutex implements IMutex {
-  private readonly _semaphore: Semaphore;
+  private readonly semaphore: Semaphore;
 
   public constructor() {
-    this._semaphore = new Semaphore(1);
+    this.semaphore = new Semaphore(1);
   }
 
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>
-  public async runExclusive<T>(params: AcquireParams, fn: () => Promise<T> | T): Promise<T>
+  public async runExclusive<T>(params: TAcquireParams, fn: () => Promise<T> | T): Promise<T>
   public async runExclusive<T>(...args: any[]): Promise<T> {
     // @ts-ignore
-    return this._semaphore.runExclusive<T>(...args);
+    return this.semaphore.runExclusive<T>(...args);
   }
 
-  public async acquire(params?: { timeoutMs?: number; }, acquireToken?: string): Promise<IReleaser<MutexToken>> {
-    // Cast SemaphoreToken to MutexToken since we're implementing a mutex interface
-    const releaser = await this._semaphore.acquire(params, acquireToken);
-    const wrappedReleaser: IReleaser<MutexToken> = {
-      release: async () => releaser.release(),
-      getToken: () => releaser.getToken() as unknown as MutexToken
-    };
-    return wrappedReleaser;
+  public async acquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken>> {
+    const releaser = await this.semaphore.acquire(params);
+
+    // Same releaser and same token, only branded as a mutex one
+    return releaser as unknown as IReleaser<TMutexToken>;
   }
 
   public async cancel(errMessage?: string): Promise<void> {
-    return this._semaphore.cancelAll(errMessage ?? "Mutex cancelled");
+    return this.semaphore.cancelAll(errMessage ?? "Mutex cancelled");
   }
 
   public async isLocked(): Promise<boolean> {
-    return this._semaphore.isLocked();
+    return this.semaphore.isLocked();
   }
 
   public async waitForUnlock(): Promise<void> {
-    return await this._semaphore.waitForAnyUnlock();
+    return await this.semaphore.waitForAnyUnlock();
   }
 }
