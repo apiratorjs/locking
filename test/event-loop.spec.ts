@@ -54,6 +54,35 @@ describe("Event loop", () => {
     assert.strictEqual(stderr, "");
   });
 
+  it("should not keep the process alive for an expiring semaphore permit", async () => {
+    const { ms, stderr } = await runSnippet(`
+      (async () => {
+        const semaphore = new locking.Semaphore(1);
+        await semaphore.acquire({ ttlMs: 30_000 });
+      })();
+    `);
+
+    assert.ok(ms < 10_000, `Process should exit without waiting out the TTL, took ${ms}ms`);
+    assert.strictEqual(stderr, "");
+  });
+
+  it("should keep the process alive until an expiring permit reaches a waiter", async () => {
+    const { stderr } = await runSnippet(`
+      (async () => {
+        const semaphore = new locking.Semaphore(1);
+        await semaphore.acquire({ ttlMs: 200 });
+
+        // Fails the run unless the waiter is actually granted the permit
+        process.exitCode = 1;
+
+        await semaphore.acquire();
+        process.exitCode = 0;
+      })();
+    `);
+
+    assert.strictEqual(stderr, "");
+  });
+
   it("should still reject a pending acquisition while the process is busy", async () => {
     const { stderr } = await runSnippet(`
       (async () => {

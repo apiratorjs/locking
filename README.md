@@ -144,6 +144,57 @@ try {
 const writer = await rwLock.tryAcquireWrite({ timeoutMs: 500 });
 ```
 
+### Handing a semaphore permit over: tokens and TTL
+
+A semaphore permit is identified by its token (`releaser.getToken()`), so it does not have to be released where it was
+acquired. `restoreReleaser(token)` rebuilds the releaser anywhere the same semaphore is reachable - for instance in a
+job queue worker that received the token in the job payload.
+
+A permit whose holder can get lost (a crashed or dropped job) should get a `ttlMs`: when it runs out, the permit goes
+back to the semaphore as if it had been released. The TTL counts from the moment the permit is granted, not from the
+call. `extend(ttlMs)` sets a new TTL counted from now, `remainingTtl()` tells how much is left (`Infinity` without a
+TTL, `null` once the permit is gone), and `isHeld()` whether the token still holds a permit. `Infinity` works as input
+too: `ttlMs: Infinity` means no TTL, and `extend(Infinity)` removes the one a permit has. It does not survive JSON
+(`JSON.stringify` turns it into `null`), so hand the token over to other code, not the `remainingTtl()` value.
+
+Without `ttlMs` the backend decides: the in-memory semaphores hold the permit until it is released, since their permits
+go away with the process anyway. Backends whose permits outlive the process (such as Redis) default to a finite TTL, so
+a crashed holder cannot take a slot forever - pass `ttlMs` explicitly if the work can take longer than that default.
+
+Releasing is idempotent per token: releasing the same permit twice - through the same releaser or through a restored
+one - gives back one permit, and a holder whose permit already expired cannot release the permit of whoever got it
+next.
+
+```typescript
+const semaphore = locks.semaphore("exports", 3);
+
+// Producer: take a slot or skip, and hand the permit over to the job
+const releaser = await semaphore.tryAcquire({ ttlMs: 10 * 60_000 });
+if (!releaser) {
+  return; // all slots busy
+}
+await queue.add("export", { permitToken: releaser.getToken() });
+
+// Worker
+const permit = locks.semaphore("exports", 3).restoreReleaser(job.data.permitToken);
+if (!(await permit.isHeld())) {
+  return; // expired in the queue - the slot was not reserved for this job anymore
+}
+
+try {
+  // ... long work, extending the permit while it goes on
+  await permit.extend(10 * 60_000);
+} finally {
+  await permit.release();
+}
+```
+
+> The in-memory semaphore keeps its permits in the current process, so a token can only be restored there. Handing
+> permits over between processes needs a backend that stores them outside the process, such as Redis.
+>
+> An expiring permit does not keep the process alive by itself, unless somebody is queued on the semaphore - then the
+> process stays up until the expiry hands them the permit.
+
 ### Local Primitives
 
 #### Mutex
@@ -655,7 +706,16 @@ What an implementation is responsible for:
 - **Owning locks by name.** The same name should return the same live instance; destroyed locks are forgotten.
 - **Rejecting a conflicting configuration.** If `"uploads"` already exists with `maxCount: 2`, a request for
   `maxCount: 5` should throw `LockConfigMismatchError` rather than silently return a different capacity.
-- **Never force-releasing a held lock.** `cancelAll()` cancels waiters; owners release their own locks.
+- **Never force-releasing a held lock.** `cancelAll()` cancels waiters; owners release their own locks. The one
+  exception is a semaphore permit whose TTL ran out - that goes back as if released.
+- **Semaphore permits addressed by token:**
+  - `release()` is idempotent per token, across every releaser of that token, including those from
+    `restoreReleaser()`;
+  - once a permit expired, a late `release()` of its token is a no-op and `extend()` returns `false`, even if the
+    backend cleans expired permits up lazily;
+  - `restoreReleaser(token)` is synchronous and does no I/O - an unknown token gives a releaser that holds nothing;
+  - `ttlMs` counts from the moment the permit is granted, not from the call. `Infinity` means no TTL. Without
+    `ttlMs`, pick a finite default if permits outlive the process.
 - **`destroy()` being idempotent**, and `isDestroyed` becoming `true` once a lock is torn down.
 
 `InMemoryDistributedLockManager` and the in-memory locks under `src/in-memory-distributed` can be read as a

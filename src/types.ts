@@ -13,6 +13,24 @@ export type TAcquireParams = {
   timeoutMs?: number;
 };
 
+export type TSemaphoreAcquireParams = TAcquireParams & {
+  /**
+   * How long the permit stays held, in milliseconds, counted from the moment it
+   * is granted (not from the call, so time spent waiting in the queue does not
+   * eat into it). When it runs out the permit goes back to the semaphore as if
+   * it had been released. Infinity means no TTL.
+   *
+   * Left out, the backend's default applies. The in-memory semaphores hold the
+   * permit until it is released - their permits go away with the process anyway.
+   * Backends whose permits outlive the process (Redis, ...) must default to a
+   * finite TTL instead, so a holder that crashed cannot take a slot forever.
+   *
+   * Meant for permits whose holder may never get to release them - e.g. a token
+   * handed over to a job queue, where the job can be lost or crash.
+   */
+  ttlMs?: number;
+};
+
 // Branded type for Semaphore tokens to prevent mixing with Mutex tokens
 export type TSemaphoreToken = string & { readonly __brand: unique symbol };
 
@@ -38,7 +56,7 @@ export interface ISemaphore {
    * @param params Optional acquisition parameters
    * @returns A releaser that can be used to release the semaphore
    */
-  acquire(params?: TAcquireParams): Promise<IReleaser<TSemaphoreToken>>;
+  acquire(params?: TSemaphoreAcquireParams): Promise<ISemaphoreReleaser>;
 
   /**
    * Try to acquire the semaphore without throwing on timeout
@@ -47,7 +65,18 @@ export interface ISemaphore {
    * @returns A releaser, or null if no permit could be acquired within timeoutMs.
    * Cancellation and other failures still throw.
    */
-  tryAcquire(params?: TAcquireParams): Promise<IReleaser<TSemaphoreToken> | null>;
+  tryAcquire(params?: TSemaphoreAcquireParams): Promise<ISemaphoreReleaser | null>;
+
+  /**
+   * Rebuilds the releaser of a permit from its token - the one getToken()
+   * returned - so a permit acquired in one place can be released, extended or
+   * inspected somewhere else (a job queue worker, for instance).
+   *
+   * Does not check the token: a token that holds nothing - already released,
+   * expired, or never issued by this semaphore - gives a releaser whose
+   * release() does nothing and whose extend() returns false.
+   */
+  restoreReleaser(token: TSemaphoreToken): ISemaphoreReleaser;
 
   /**
    * Cancel all pending acquisitions
@@ -143,6 +172,59 @@ export interface IReleaser<T extends TAcquireToken = TAcquireToken> {
   getToken(): T;
 }
 
+/**
+ * Releaser of a semaphore permit. Everything goes through the token, so any
+ * number of releasers for the same token - the original one and those from
+ * restoreReleaser() - act on the same permit, and releasing it once through any
+ * of them makes the others no-ops.
+ */
+export interface ISemaphoreReleaser extends IReleaser<TSemaphoreToken> {
+  /**
+   * Sets the permit to expire ttlMs from now, replacing the previous TTL (or
+   * giving one to a permit acquired without it). Infinity removes the TTL.
+   * @returns false if the token no longer holds a permit - released or expired.
+   */
+  extend(ttlMs: number): Promise<boolean>;
+
+  /**
+   * Milliseconds left until the permit expires: Infinity for a permit without a
+   * TTL, null if the token no longer holds a permit. Meant for a local decision
+   * such as "extend if less than X is left" - Infinity does not survive JSON
+   * (it turns into null), so hand the token over, not this value.
+   */
+  remainingTtl(): Promise<number | null>;
+
+  /**
+   * Whether the token still holds a permit.
+   */
+  isHeld(): Promise<boolean>;
+}
+
+/**
+ * The permits of one semaphore, addressed by token - the part of the semaphore
+ * its releasers get to act on. Internal to semaphore implementations: releasers
+ * call it, callers never do.
+ */
+export interface ISemaphorePermits {
+  release(token: TSemaphoreToken): Promise<void>;
+
+  extend(token: TSemaphoreToken, ttlMs: number): Promise<boolean>;
+
+  remainingTtl(token: TSemaphoreToken): Promise<number | null>;
+}
+
+/**
+ * Bookkeeping of a permit a semaphore has granted.
+ */
+export type THeldSemaphorePermit = {
+  /**
+   * performance.now() at which the permit runs out, null for no TTL.
+   */
+  expiresAt: number | null;
+
+  expiryTimer?: ReturnType<typeof setTimeout>;
+};
+
 export interface IDistributedSemaphore extends Omit<ISemaphore, "acquire"> {
   name: string;
 
@@ -152,7 +234,7 @@ export interface IDistributedSemaphore extends Omit<ISemaphore, "acquire"> {
 
   isDestroyed: boolean;
 
-  acquire(params?: TAcquireParams): Promise<IReleaser<TSemaphoreToken>>;
+  acquire(params?: TSemaphoreAcquireParams): Promise<ISemaphoreReleaser>;
 }
 
 export interface IDistributedMutex extends Omit<IMutex, "acquire"> {

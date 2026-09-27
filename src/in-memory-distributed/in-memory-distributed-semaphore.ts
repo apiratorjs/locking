@@ -3,9 +3,10 @@ import crypto from "node:crypto";
 import {
   ELockDisplayType,
   IDistributedSemaphore,
-  IReleaser,
+  ISemaphoreReleaser,
   TAcquireParams,
   TDistributedSemaphoreConstructorProps,
+  TSemaphoreAcquireParams,
   TSemaphoreToken,
 } from "../types";
 import { Semaphore } from "../semaphore";
@@ -48,19 +49,23 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
   }
 
   public async acquire(
-    params?: TAcquireParams,
-  ): Promise<IReleaser<TSemaphoreToken>> {
+    params?: TSemaphoreAcquireParams,
+  ): Promise<ISemaphoreReleaser> {
     const token = `${this.name}:${crypto.randomUUID()}` as TSemaphoreToken;
 
     return this.ensureAlive().acquire(params, token);
   }
 
   public async tryAcquire(
-    params?: TAcquireParams,
-  ): Promise<IReleaser<TSemaphoreToken> | null> {
+    params?: TSemaphoreAcquireParams,
+  ): Promise<ISemaphoreReleaser | null> {
     const token = `${this.name}:${crypto.randomUUID()}` as TSemaphoreToken;
 
     return this.ensureAlive().tryAcquire(params, token);
+  }
+
+  public restoreReleaser(token: TSemaphoreToken): ISemaphoreReleaser {
+    return this.ensureAlive().restoreReleaser(token);
   }
 
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;

@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - 2026-09-27
+
+Compared to **6.0.0**.
+
+### Breaking Changes
+
+- `ISemaphore` (and therefore `IDistributedSemaphore`) declares a new required method, `restoreReleaser(token)`, and its `acquire()` / `tryAcquire()` now return `ISemaphoreReleaser` instead of `IReleaser<TSemaphoreToken>`. Custom semaphore backends and hand-written implementations or test doubles stop compiling until they add them.
+
+### Added
+
+- `ttlMs` in the acquisition parameters of `Semaphore` and the distributed semaphore (`TSemaphoreAcquireParams`): the permit is released automatically once it runs out. The TTL counts from the moment the permit is granted. Without `ttlMs` the backend's default applies: the in-memory semaphores hold the permit until it is released, while backends whose permits outlive the process (Redis, ...) are expected to default to a finite TTL.
+- `ISemaphoreReleaser` with `extend(ttlMs)`, `remainingTtl()` and `isHeld()` on top of `release()` / `getToken()`. `remainingTtl()` returns `Infinity` for a permit without a TTL and `null` once the permit is gone; `Infinity` is accepted as input too (`ttlMs: Infinity` means no TTL, `extend(Infinity)` removes the TTL).
+- `restoreReleaser(token)` on `Semaphore` and the distributed semaphore: rebuilds the releaser of a permit from its token, so a permit can be released somewhere other than where it was acquired (e.g. in a job queue worker).
+
+### Behavior
+
+- Semaphore permits are tracked by token. Releasing is idempotent per token rather than per releaser object, and a releaser whose permit already expired can no longer release a permit that has been granted to somebody else since.
+- Destroying a distributed semaphore (or `dispose()` on a local one) forgets its held permits: their releasers become no-ops and `isHeld()` returns `false`.
+- An expiring permit does not keep the process alive by itself; while somebody is queued on the semaphore it does, so the queued acquirer is not abandoned when nothing else is left running.
+
+### Migration checklist
+
+Code that only *uses* the semaphores shipped with this package needs no changes: `IReleaser` members keep working, and permits without `ttlMs` behave as before.
+
+For implementers of `ISemaphore` / `IDistributedSemaphore`:
+
+1. Return an `ISemaphoreReleaser` from `acquire()` / `tryAcquire()`: `release()`, `getToken()`, `extend(ttlMs)`, `remainingTtl()`, `isHeld()`.
+2. Add `restoreReleaser(token)`. It is synchronous and does no I/O; an unknown token gives a releaser that holds nothing.
+3. Accept `ttlMs` in `TSemaphoreAcquireParams`, counted from the moment the permit is granted. `Infinity` means no TTL. Keep the permit's lifetime separate from `timeoutMs`, which only bounds the wait.
+4. Without `ttlMs`, default to a finite TTL if your permits outlive the process (Redis, Postgres, ...), so a crashed holder cannot take a slot forever.
+5. Track permits by token: `release()` is idempotent per token, a late `release()` after expiry is a no-op, and `extend()` after expiry returns `false` - even when expired permits are cleaned up lazily.
+6. Use a single clock for expiry (e.g. the Redis server time via `TIME` in a script), not each client's `Date.now()`: the permit may be acquired, extended and released on different hosts.
+7. Wake queued acquirers when a permit expires, not only when one is released - an expired permit may never see a `release()`.
+8. Bump the `@apiratorjs/locking` peer / dependency range of the backend package to `^7.0.0`.
+
 ## [6.0.0] - 2026-09-27
 
 Compared to **5.0.0**.
