@@ -144,7 +144,11 @@ try {
 const writer = await rwLock.tryAcquireWrite({ timeoutMs: 500 });
 ```
 
-### Handing a semaphore permit over: tokens and TTL
+### Handing a semaphore permit or a mutex lock over: tokens and TTL
+
+Everything in this section works the same for mutexes (`Mutex` and the distributed mutex): a mutex lock is a
+semaphore permit with a single slot, with `acquire({ ttlMs })`, `restoreReleaser(token)`, `extend()`,
+`remainingTtl()` and `isHeld()` alike.
 
 A semaphore permit is identified by its token (`releaser.getToken()`), so it does not have to be released where it was
 acquired. `restoreReleaser(token)` rebuilds the releaser anywhere the same semaphore is reachable - for instance in a
@@ -707,8 +711,8 @@ What an implementation is responsible for:
 - **Rejecting a conflicting configuration.** If `"uploads"` already exists with `maxCount: 2`, a request for
   `maxCount: 5` should throw `LockConfigMismatchError` rather than silently return a different capacity.
 - **Never force-releasing a held lock.** `cancelAll()` cancels waiters; owners release their own locks. The one
-  exception is a semaphore permit whose TTL ran out - that goes back as if released.
-- **Semaphore permits addressed by token:**
+  exception is a semaphore permit or mutex lock whose TTL ran out - that goes back as if released.
+- **Semaphore permits and mutex locks addressed by token:**
   - `release()` is idempotent per token, across every releaser of that token, including those from
     `restoreReleaser()`;
   - once a permit expired, a late `release()` of its token is a no-op and `extend()` returns `false`, even if the

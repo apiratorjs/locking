@@ -31,6 +31,8 @@ export type TSemaphoreAcquireParams = TAcquireParams & {
   ttlMs?: number;
 };
 
+export type TMutexAcquireParams = TSemaphoreAcquireParams;
+
 // Branded type for Semaphore tokens to prevent mixing with Mutex tokens
 export type TSemaphoreToken = string & { readonly __brand: unique symbol };
 
@@ -119,7 +121,7 @@ export interface IMutex {
    * @param params Optional acquisition parameters
    * @returns A releaser that can be used to release the mutex
    */
-  acquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken>>;
+  acquire(params?: TMutexAcquireParams): Promise<IMutexReleaser>;
 
   /**
    * Try to acquire the mutex without throwing on timeout
@@ -128,7 +130,12 @@ export interface IMutex {
    * @returns A releaser, or null if the mutex could not be acquired within
    * timeoutMs. Cancellation and other failures still throw.
    */
-  tryAcquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken> | null>;
+  tryAcquire(params?: TMutexAcquireParams): Promise<IMutexReleaser | null>;
+
+  /**
+   * Same as ISemaphore.restoreReleaser(), for the mutex.
+   */
+  restoreReleaser(token: TMutexToken): IMutexReleaser;
 
   /**
    * Cancel any pending acquisitions
@@ -173,12 +180,12 @@ export interface IReleaser<T extends TAcquireToken = TAcquireToken> {
 }
 
 /**
- * Releaser of a semaphore permit. Everything goes through the token, so any
+ * Releaser of a semaphore permit or a mutex lock. Everything goes through the token, so any
  * number of releasers for the same token - the original one and those from
  * restoreReleaser() - act on the same permit, and releasing it once through any
  * of them makes the others no-ops.
  */
-export interface ISemaphoreReleaser extends IReleaser<TSemaphoreToken> {
+export interface ILeaseReleaser<T extends TAcquireToken> extends IReleaser<T> {
   /**
    * Sets the permit to expire ttlMs from now, replacing the previous TTL (or
    * giving one to a permit acquired without it). Infinity removes the TTL.
@@ -199,6 +206,10 @@ export interface ISemaphoreReleaser extends IReleaser<TSemaphoreToken> {
    */
   isHeld(): Promise<boolean>;
 }
+
+export interface ISemaphoreReleaser extends ILeaseReleaser<TSemaphoreToken> {}
+
+export interface IMutexReleaser extends ILeaseReleaser<TMutexToken> {}
 
 /**
  * The permits of one semaphore, addressed by token - the part of the semaphore
@@ -246,7 +257,7 @@ export interface IDistributedMutex extends Omit<IMutex, "acquire"> {
 
   isDestroyed: boolean;
 
-  acquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken>>;
+  acquire(params?: TMutexAcquireParams): Promise<IMutexReleaser>;
 }
 
 export type TDistributedSemaphoreConstructorProps = {

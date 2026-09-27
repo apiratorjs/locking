@@ -9,3 +9,4 @@ import "./errors.spec";
 import "./event-loop.spec";
 import "./try-acquire.spec";
 import "./semaphore-lease.spec";
+import "./mutex-lease.spec";

@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [8.0.0] - 2026-09-27
+
+Compared to **7.0.0**.
+
+### Breaking Changes
+
+- `IMutex` (and therefore `IDistributedMutex`) declares a new required method, `restoreReleaser(token)`, and its `acquire()` / `tryAcquire()` now return `IMutexReleaser` instead of `IReleaser<TMutexToken>`. Custom mutex backends and hand-written implementations or test doubles stop compiling until they add them.
+
+### Added
+
+- Mutexes get what semaphores got in 7.0.0: `ttlMs` in the acquisition parameters (`TMutexAcquireParams`), `restoreReleaser(token)`, and `extend(ttlMs)` / `remainingTtl()` / `isHeld()` on the releaser (`IMutexReleaser`). Applies to `Mutex` and the distributed mutex.
+- `ILeaseReleaser<T>`: the common base of `ISemaphoreReleaser` and `IMutexReleaser`, for code that works with either.
+
+### Migration checklist
+
+Code that only *uses* the mutexes shipped with this package needs no changes.
+
+For implementers of `IMutex` / `IDistributedMutex`: follow the 7.0.0 checklist for semaphores below, for the mutex - return `IMutexReleaser`, add `restoreReleaser(token)`, accept `ttlMs` independently of `timeoutMs`, track the lock by token, and bump the `@apiratorjs/locking` range to `^8.0.0`.
+
 ## [7.0.0] - 2026-09-27
 
 Compared to **6.0.0**.

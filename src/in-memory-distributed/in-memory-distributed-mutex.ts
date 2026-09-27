@@ -3,10 +3,12 @@ import crypto from "node:crypto";
 import {
   ELockDisplayType,
   IDistributedMutex,
-  IReleaser,
+  IMutexReleaser,
   TAcquireParams,
   TDistributedMutexConstructorProps,
+  TMutexAcquireParams,
   TMutexToken,
+  TSemaphoreToken,
 } from "../types";
 import { Semaphore } from "../semaphore";
 import { LockNotFoundError } from "../errors";
@@ -33,23 +35,29 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
   }
 
   public async acquire(
-    params?: TAcquireParams,
-  ): Promise<IReleaser<TMutexToken>> {
+    params?: TMutexAcquireParams,
+  ): Promise<IMutexReleaser> {
     const token = `${this.name}:${crypto.randomUUID()}` as TMutexToken;
 
     const releaser = await this.ensureAlive().acquire(params, token);
 
-    return releaser as unknown as IReleaser<TMutexToken>;
+    return releaser as unknown as IMutexReleaser;
   }
 
   public async tryAcquire(
-    params?: TAcquireParams,
-  ): Promise<IReleaser<TMutexToken> | null> {
+    params?: TMutexAcquireParams,
+  ): Promise<IMutexReleaser | null> {
     const token = `${this.name}:${crypto.randomUUID()}` as TMutexToken;
 
     const releaser = await this.ensureAlive().tryAcquire(params, token);
 
-    return releaser as unknown as IReleaser<TMutexToken> | null;
+    return releaser as unknown as IMutexReleaser | null;
+  }
+
+  public restoreReleaser(token: TMutexToken): IMutexReleaser {
+    const releaser = this.ensureAlive().restoreReleaser(token as unknown as TSemaphoreToken);
+
+    return releaser as unknown as IMutexReleaser;
   }
 
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
