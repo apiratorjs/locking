@@ -1,28 +1,40 @@
-# Release notes — @apiratorjs/locking 5.0.0
+# Release notes — @apiratorjs/locking 6.0.0
 
-Major rewrite of the distributed locking surface. Local `Mutex`, `Semaphore`, and `ReadWriteLock` remain; how you obtain and back distributed locks has changed.
+Adds non-throwing "try" acquisition to every locking primitive. This is a major release because the lock interfaces gained new required methods. Code that only uses the locks shipped with this package upgrades without changes.
+
+## Breaking change
+
+`IMutex`, `ISemaphore`, and `IReadWriteLock` (and their `IDistributed*` counterparts) now require `tryAcquire()` / `tryAcquireRead()` / `tryAcquireWrite()`. Custom backends such as Redis or Postgres, and hand-written implementations or test doubles of these interfaces, must add them. The `timeoutMs: 0` path should be a single atomic operation on the backend store.
 
 ## Highlights
 
-- **`InMemoryDistributedLockManager`** replaces `DistributedMutex` / `DistributedSemaphore` / `DistributedReadWriteLock` and the global `InMemoryDistributedRegistry`.
-- Backends implement **`IDistributedLockManager`** instead of patching static `.factory` hooks.
-- **`cancel()` / `cancelAll()`** only reject waiters — held locks stay held.
-- **`timeoutMs: 0`** fails immediately instead of falling back to the default timeout.
-- Safer `ReadWriteLock` (no reader/writer race from two independent semaphores) and idempotent `release()`.
+- **`tryAcquire()`** on `Mutex` and `Semaphore`, and **`tryAcquireRead()` / `tryAcquireWrite()`** on `ReadWriteLock`. The distributed locks from `InMemoryDistributedLockManager` get them too.
+- They resolve to a **releaser**, or to **`null`** if the lock is busy, instead of throwing `TimeoutLockingError`.
+- **`timeoutMs` defaults to `0`**, so by default they return right away. Pass `timeoutMs` to wait a bounded time first.
+- Only a timeout becomes `null`: cancellation and destroyed locks still throw.
+- Atomic check-and-take, and no overtaking of waiters already in the queue.
 
-## Upgrade in one glance
+## At a glance
 
 ```typescript
-// 4.x
-import { DistributedMutex } from "@apiratorjs/locking";
-const mutex = new DistributedMutex({ name: "orders" });
+import { Mutex, ReadWriteLock } from "@apiratorjs/locking";
 
-// 5.x
-import { InMemoryDistributedLockManager } from "@apiratorjs/locking";
-const locks = new InMemoryDistributedLockManager();
-const mutex = locks.mutex("orders");
+const mutex = new Mutex();
+const rwLock = new ReadWriteLock();
+
+const releaser = await mutex.tryAcquire();
+if (!releaser) {
+  return; // somebody else is already doing this work
+}
+
+try {
+  // ... critical section ...
+} finally {
+  await releaser.release();
+}
+
+// Wait up to 500 ms, then give up without an exception
+const writer = await rwLock.tryAcquireWrite({ timeoutMs: 500 });
 ```
 
-Types under `types` were renamed with a `T` prefix (`AcquireParams` → `TAcquireParams`, and so on).
-
-Full migration notes, type rename table, and behavior details: [CHANGELOG.md](./CHANGELOG.md).
+Full details and the migration checklist for backend authors: [CHANGELOG.md](./CHANGELOG.md).

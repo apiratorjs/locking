@@ -42,6 +42,16 @@ export class InMemoryDistributedMutex implements IDistributedMutex {
     return releaser as unknown as IReleaser<TMutexToken>;
   }
 
+  public async tryAcquire(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TMutexToken> | null> {
+    const token = `${this.name}:${crypto.randomUUID()}` as TMutexToken;
+
+    const releaser = await this.ensureAlive().tryAcquire(params, token);
+
+    return releaser as unknown as IReleaser<TMutexToken> | null;
+  }
+
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
   public async runExclusive<T>(
     params: TAcquireParams,

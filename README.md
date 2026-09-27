@@ -119,6 +119,31 @@ yarn add @apiratorjs/locking
 > waiting until the holders actually release. On distributed locks, `destroy()` additionally resolves those waiters,
 > since a lock that no longer exists cannot be held.
 
+### Trying to acquire without waiting
+
+`tryAcquire()` (mutex, semaphore) and `tryAcquireRead()` / `tryAcquireWrite()` (read-write lock) return a releaser
+when the lock was taken and `null` when it was not - instead of throwing `TimeoutLockingError`. Unlike `acquire()`,
+`timeoutMs` defaults to `0`, so by default they return right away. Pass `timeoutMs` to wait a bounded time first.
+
+Only a timeout turns into `null`: cancellation (`CancelledLockingError`) and destroyed distributed locks
+(`LockNotFoundError`) still throw, so "busy" is never confused with "gone".
+
+```typescript
+const releaser = await mutex.tryAcquire();
+if (!releaser) {
+  return; // somebody else is already doing this work
+}
+
+try {
+  // ... critical section ...
+} finally {
+  await releaser.release();
+}
+
+// Wait up to 500 ms, then give up without an exception
+const writer = await rwLock.tryAcquireWrite({ timeoutMs: 500 });
+```
+
 ### Local Primitives
 
 #### Mutex
@@ -365,7 +390,7 @@ import {
 | Error Class | Description | When Thrown |
 |-------------|-------------|-------------|
 | `LockingError` | Base class for all locking errors | Parent class, not thrown directly |
-| `TimeoutLockingError` | Lock acquisition timed out | When `acquire()` exceeds `timeoutMs` |
+| `TimeoutLockingError` | Lock acquisition timed out | When `acquire()` exceeds `timeoutMs` (the `tryAcquire*()` methods return `null` instead) |
 | `CancelledLockingError` | Lock acquisition was cancelled | When `cancel()` / `cancelAll()` or `destroy()` is called |
 | `LockNotFoundError` | Lock no longer exists | When accessing a destroyed distributed lock |
 | `LockConfigMismatchError` | A lock with this name already exists with different settings | When a distributed lock is constructed with a `maxCount` / `maxReaders` that conflicts with the existing lock of the same name |

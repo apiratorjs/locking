@@ -5,6 +5,51 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-09-27
+
+Compared to **5.0.0**.
+
+### Breaking Changes
+
+- `IMutex`, `ISemaphore`, and `IReadWriteLock` declare new required methods: `tryAcquire()` (mutex, semaphore) and `tryAcquireRead()` / `tryAcquireWrite()` (read-write lock). Since `IDistributedMutex`, `IDistributedSemaphore`, and `IDistributedRWLock` extend them, every custom distributed backend (Redis, Postgres, ...) and every hand-written implementation or test double of these interfaces stops compiling until it adds the methods.
+
+Code that only *uses* the locks shipped with this package needs no changes.
+
+### Added
+
+- `tryAcquire()` on `Mutex`, `Semaphore`, and the distributed mutex / semaphore returned by `InMemoryDistributedLockManager`.
+- `tryAcquireRead()` / `tryAcquireWrite()` on `ReadWriteLock` and the distributed read-write lock.
+- The new methods resolve to a releaser, or to `null` when the lock could not be acquired within `timeoutMs`, instead of throwing `TimeoutLockingError`.
+
+```typescript
+const releaser = await mutex.tryAcquire();
+if (!releaser) {
+  return; // lock is busy
+}
+
+try {
+  // ... critical section ...
+} finally {
+  await releaser.release();
+}
+```
+
+### Behavior
+
+- `timeoutMs` defaults to `0` for the `tryAcquire*()` methods (the `acquire*()` default stays at 1 minute): a busy lock yields `null` right away. Pass `timeoutMs` to wait a bounded time first.
+- Only a timeout becomes `null`. Cancellation (`CancelledLockingError`) and destroyed distributed locks (`LockNotFoundError`) still throw, so "busy" is never confused with "gone".
+- With `timeoutMs: 0` the check and the acquisition happen in one synchronous step, and a failed attempt leaves nothing queued behind.
+- `tryAcquire*()` never overtakes waiters that are already queued; it grants the lock under exactly the same conditions as the matching `acquire*()`.
+
+### Migration checklist
+
+For implementers of `IMutex` / `ISemaphore` / `IReadWriteLock` or their `IDistributed*` counterparts:
+
+1. Add `tryAcquire(params?)` to mutex and semaphore implementations, and `tryAcquireRead(params?)` / `tryAcquireWrite(params?)` to read-write lock implementations, returning `IReleaser<...> | null`.
+2. Default `timeoutMs` to `0` in these methods, return `null` on timeout, and keep throwing on cancellation or a destroyed lock.
+3. Make the `timeoutMs: 0` path a single atomic operation on the backend (e.g. `SET NX` or a Lua script in Redis), not an `isLocked()` check followed by `acquire()`.
+4. Bump the `@apiratorjs/locking` peer / dependency range of the backend package to `^6.0.0`.
+
 ## [5.0.0] - 2026-07-26
 
 Compared to **4.0.x** (`4.0.3`).
@@ -109,5 +154,6 @@ const mutex = locks.mutex("orders");
 
 See Git history and npm for 4.0.x patch notes. This changelog starts detailed entries at 5.0.0.
 
+[6.0.0]: https://github.com/apiratorjs/locking/releases/tag/v6.0.0
 [5.0.0]: https://github.com/apiratorjs/locking/releases/tag/v5.0.0
 [4.0.3]: https://github.com/apiratorjs/locking/releases/tag/v4.0.3

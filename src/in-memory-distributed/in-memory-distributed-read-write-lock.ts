@@ -57,6 +57,18 @@ export class InMemoryDistributedReadWriteLock implements IDistributedRWLock {
     return this.ensureAlive().acquireWrite(params);
   }
 
+  public async tryAcquireRead(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TReadLockToken> | null> {
+    return this.ensureAlive().tryAcquireRead(params);
+  }
+
+  public async tryAcquireWrite(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TWriteLockToken> | null> {
+    return this.ensureAlive().tryAcquireWrite(params);
+  }
+
   public async withReadLock<T>(fn: TExclusiveCallback<T>): Promise<T>;
   public async withReadLock<T>(
     params: TAcquireParams,

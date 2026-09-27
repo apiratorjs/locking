@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { IDeferred, IReleaser, ISemaphore, TAcquireParams, TAcquireToken, TSemaphoreToken } from "./types";
 import { DEFAULT_TIMEOUT_IN_MS } from "./constants";
 import { CancelledLockingError, TimeoutLockingError } from "./errors";
-import { unrefTimer } from "./utils";
+import { nullOnTimeout, unrefTimer } from "./utils";
 
 class Releaser implements IReleaser<TSemaphoreToken> {
   private isReleased: boolean = false;
@@ -145,6 +145,23 @@ export class Semaphore implements ISemaphore {
 
       this.queue.push(deferred);
     });
+  }
+
+  /**
+   * Same as acquire(), but resolves to null instead of throwing
+   * TimeoutLockingError, and timeoutMs defaults to 0.
+   */
+  public async tryAcquire(params?: TAcquireParams, acquireToken?: TAcquireToken): Promise<IReleaser<TSemaphoreToken> | null> {
+    const timeoutMs = params?.timeoutMs ?? 0;
+
+    // Checked and taken in one synchronous step. A free permit also means an
+    // empty queue - release() hands permits to waiters directly - so this never
+    // overtakes anybody already waiting.
+    if (timeoutMs <= 0 && this.availablePermits === 0) {
+      return null;
+    }
+
+    return nullOnTimeout(this.acquire({ timeoutMs }, acquireToken));
   }
 
   /**

@@ -12,7 +12,7 @@ import {
 } from "./types";
 import { DEFAULT_MAX_READERS, DEFAULT_TIMEOUT_IN_MS } from "./constants";
 import { CancelledLockingError, TimeoutLockingError } from "./errors";
-import { unrefTimer } from "./utils";
+import { nullOnTimeout, unrefTimer } from "./utils";
 
 /**
  * ReadWriteLock (short for Read-Write Lock) is a synchronization mechanism that allows multiple threads to read from a resource simultaneously,
@@ -69,7 +69,7 @@ export class ReadWriteLock implements IReadWriteLock {
   public async acquireRead(params?: TAcquireParams): Promise<IReleaser<TReadLockToken>> {
     const token = `rwlock:read:${crypto.randomUUID()}` as TReadLockToken;
 
-    if (!this.writerActive && this.readQueue.length === 0 && this.activeReaderCount < this.maxReadersCount) {
+    if (this.canTakeRead()) {
       this.activeReaderCount++;
       return this.createReleaser(token, () => this.releaseRead());
     }
@@ -83,7 +83,7 @@ export class ReadWriteLock implements IReadWriteLock {
   public async acquireWrite(params?: TAcquireParams): Promise<IReleaser<TWriteLockToken>> {
     const token = `rwlock:write:${crypto.randomUUID()}` as TWriteLockToken;
 
-    if (!this.writerActive && this.activeReaderCount === 0 && this.writeQueue.length === 0) {
+    if (this.canTakeWrite()) {
       this.writerActive = true;
       return this.createReleaser(token, () => this.releaseWrite());
     }
@@ -92,6 +92,34 @@ export class ReadWriteLock implements IReadWriteLock {
     await this.enqueue(this.writeQueue, params, "Timeout acquiring write lock");
 
     return this.createReleaser(token, () => this.releaseWrite());
+  }
+
+  /**
+   * Same as acquireRead(), but resolves to null instead of throwing
+   * TimeoutLockingError, and timeoutMs defaults to 0.
+   */
+  public async tryAcquireRead(params?: TAcquireParams): Promise<IReleaser<TReadLockToken> | null> {
+    const timeoutMs = params?.timeoutMs ?? 0;
+
+    if (timeoutMs <= 0 && !this.canTakeRead()) {
+      return null;
+    }
+
+    return nullOnTimeout(this.acquireRead({ timeoutMs }));
+  }
+
+  /**
+   * Same as acquireWrite(), but resolves to null instead of throwing
+   * TimeoutLockingError, and timeoutMs defaults to 0.
+   */
+  public async tryAcquireWrite(params?: TAcquireParams): Promise<IReleaser<TWriteLockToken> | null> {
+    const timeoutMs = params?.timeoutMs ?? 0;
+
+    if (timeoutMs <= 0 && !this.canTakeWrite()) {
+      return null;
+    }
+
+    return nullOnTimeout(this.acquireWrite({ timeoutMs }));
   }
 
   /**
@@ -154,6 +182,14 @@ export class ReadWriteLock implements IReadWriteLock {
 
   public async isReadLocked(): Promise<boolean> {
     return this.activeReaderCount > 0;
+  }
+
+  private canTakeRead(): boolean {
+    return !this.writerActive && this.readQueue.length === 0 && this.activeReaderCount < this.maxReadersCount;
+  }
+
+  private canTakeWrite(): boolean {
+    return !this.writerActive && this.activeReaderCount === 0 && this.writeQueue.length === 0;
   }
 
   private enqueue(queue: IDeferred[], params: TAcquireParams | undefined, timeoutMessage: string): Promise<void> {

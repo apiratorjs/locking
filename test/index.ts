@@ -7,3 +7,4 @@ import "./in-memory-distributed-read-write-lock.spec";
 import "./in-memory-distributed-lock-manager.spec";
 import "./errors.spec";
 import "./event-loop.spec";
+import "./try-acquire.spec";

@@ -41,6 +41,15 @@ export interface ISemaphore {
   acquire(params?: TAcquireParams): Promise<IReleaser<TSemaphoreToken>>;
 
   /**
+   * Try to acquire the semaphore without throwing on timeout
+   * @param params Optional acquisition parameters. Unlike acquire(), timeoutMs
+   * defaults to 0: return right away when no permit is free.
+   * @returns A releaser, or null if no permit could be acquired within timeoutMs.
+   * Cancellation and other failures still throw.
+   */
+  tryAcquire(params?: TAcquireParams): Promise<IReleaser<TSemaphoreToken> | null>;
+
+  /**
    * Cancel all pending acquisitions
    * @param errMessage Optional error message for cancelled acquisitions
    */
@@ -82,6 +91,15 @@ export interface IMutex {
    * @returns A releaser that can be used to release the mutex
    */
   acquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken>>;
+
+  /**
+   * Try to acquire the mutex without throwing on timeout
+   * @param params Optional acquisition parameters. Unlike acquire(), timeoutMs
+   * defaults to 0: return right away when the mutex is locked.
+   * @returns A releaser, or null if the mutex could not be acquired within
+   * timeoutMs. Cancellation and other failures still throw.
+   */
+  tryAcquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken> | null>;
 
   /**
    * Cancel any pending acquisitions
@@ -199,6 +217,24 @@ export interface IReadWriteLock {
    * @returns A releaser that can be used to release the write lock
    */
   acquireWrite(params?: TAcquireParams): Promise<IReleaser<TWriteLockToken>>;
+
+  /**
+   * Try to acquire a read lock without throwing on timeout
+   * @param params Optional acquisition parameters. Unlike acquireRead(), timeoutMs
+   * defaults to 0: return right away when a read lock is not available.
+   * @returns A releaser, or null if the read lock could not be acquired within
+   * timeoutMs. Cancellation and other failures still throw.
+   */
+  tryAcquireRead(params?: TAcquireParams): Promise<IReleaser<TReadLockToken> | null>;
+
+  /**
+   * Try to acquire a write lock without throwing on timeout
+   * @param params Optional acquisition parameters. Unlike acquireWrite(), timeoutMs
+   * defaults to 0: return right away when the write lock is not available.
+   * @returns A releaser, or null if the write lock could not be acquired within
+   * timeoutMs. Cancellation and other failures still throw.
+   */
+  tryAcquireWrite(params?: TAcquireParams): Promise<IReleaser<TWriteLockToken> | null>;
 
   /**
    * Cancel all pending acquisitions

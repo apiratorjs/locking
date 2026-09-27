@@ -55,6 +55,14 @@ export class InMemoryDistributedSemaphore implements IDistributedSemaphore {
     return this.ensureAlive().acquire(params, token);
   }
 
+  public async tryAcquire(
+    params?: TAcquireParams,
+  ): Promise<IReleaser<TSemaphoreToken> | null> {
+    const token = `${this.name}:${crypto.randomUUID()}` as TSemaphoreToken;
+
+    return this.ensureAlive().tryAcquire(params, token);
+  }
+
   public async runExclusive<T>(fn: () => Promise<T> | T): Promise<T>;
   public async runExclusive<T>(
     params: TAcquireParams,

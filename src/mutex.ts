@@ -22,6 +22,12 @@ export class Mutex implements IMutex {
     return releaser as unknown as IReleaser<TMutexToken>;
   }
 
+  public async tryAcquire(params?: TAcquireParams): Promise<IReleaser<TMutexToken> | null> {
+    const releaser = await this.semaphore.tryAcquire(params);
+
+    return releaser as unknown as IReleaser<TMutexToken> | null;
+  }
+
   public async cancel(errMessage?: string): Promise<void> {
     return this.semaphore.cancelAll(errMessage ?? "Mutex cancelled");
   }
