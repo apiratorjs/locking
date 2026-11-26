@@ -207,6 +207,38 @@ export interface ILeaseReleaser<T extends TAcquireToken> extends IReleaser<T> {
   isHeld(): Promise<boolean>;
 }
 
+export type TLeaseKeeperOptions = {
+  /**
+   * TTL set on every extension, in milliseconds. It bounds how long others wait
+   * for the lease once its holder is gone, not how long the work may take.
+   */
+  ttlMs: number;
+
+  /**
+   * How often the lease is extended, in milliseconds. Must be smaller than
+   * ttlMs - keep it well below, so one failed or slow extension does not let the
+   * lease expire.
+   */
+  extendIntervalMs: number;
+};
+
+export type TLeaseKeeperContext = {
+  /**
+   * Aborted as soon as the lease is known to be lost - an extension returned
+   * false or failed. The reason is a LeaseLostLockingError. Pass it on to work
+   * that accepts a signal (fetch, HTTP clients, ...) to stop it.
+   */
+  signal: AbortSignal;
+
+  /**
+   * Throws LeaseLostLockingError if the lease is known to be lost. Call it right
+   * before committing the results of the protected work.
+   */
+  throwIfLost(): void;
+};
+
+export type TLeaseKeeperCallback<T> = (context: TLeaseKeeperContext) => Promise<T> | T;
+
 export interface ISemaphoreReleaser extends ILeaseReleaser<TSemaphoreToken> {}
 
 export interface IMutexReleaser extends ILeaseReleaser<TMutexToken> {}

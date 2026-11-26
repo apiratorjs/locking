@@ -22,6 +22,17 @@ export class CancelledLockingError extends LockingError {
   }
 }
 
+/**
+ * The lease (a semaphore permit or a mutex lock) expired or was taken away while
+ * LeaseKeeper was keeping it alive.
+ */
+export class LeaseLostLockingError extends LockingError {
+  public constructor(message: string = "Lease was lost before the work finished", cause?: Error) {
+    super(message, cause);
+    this.name = this.constructor.name;
+  }
+}
+
 export class LockNotFoundError extends LockingError {
   public constructor(message: string = "Lock does not exist", cause?: Error) {
     super(message, cause);

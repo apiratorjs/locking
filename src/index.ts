@@ -4,6 +4,7 @@ import { ReadWriteLock } from "./read-write-lock";
 import * as types from "./types";
 import { ELockDisplayType } from "./types";
 import { InMemoryDistributedLockManager } from "./in-memory-distributed/in-memory-distributed-lock-manager";
+import { LeaseKeeper } from "./lease-keeper";
 
 export * from "./errors";
 
@@ -12,6 +13,7 @@ export {
   Mutex,
   ReadWriteLock,
   InMemoryDistributedLockManager,
+  LeaseKeeper,
   types,
   ELockDisplayType,
 };

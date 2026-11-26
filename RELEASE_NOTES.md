@@ -1,35 +1,35 @@
-# Release notes — @apiratorjs/locking 8.0.0
+# Release notes — @apiratorjs/locking 9.0.0
 
-Mutexes catch up with semaphores: a mutex lock can be handed over by its token and can expire. This is a major release because the mutex interfaces gained new required members. Code that only uses the mutexes shipped with this package upgrades without changes.
+Locks with a TTL can now outlive the TTL safely: `LeaseKeeper` extends a semaphore permit or a mutex lock while slow work
+runs and tells the work when the lease is lost.
 
 ## Breaking change
 
-`IMutex` and `IDistributedMutex` now require `restoreReleaser(token)`, and their `acquire()` / `tryAcquire()` return `IMutexReleaser` - an `IReleaser` with `extend()`, `remainingTtl()` and `isHeld()`. Custom backends and hand-written implementations or test doubles must add them.
+**Requires Node.js 17.2.0 or newer** (was 16.4.0): the lost-lease error is the reason of the `AbortSignal`, and
+`AbortController.abort(reason)` ignores the reason before 17.2. The API is unchanged: code and backends written for 8.x
+keep working; backend packages only need to widen their `@apiratorjs/locking` range to `^9.0.0`.
 
 ## Highlights
 
-- **`ttlMs`** when acquiring a mutex, counted from the moment the lock is granted. `Infinity` means no TTL.
-- **`restoreReleaser(token)`**, **`extend(ttlMs)`**, **`remainingTtl()`**, **`isHeld()`** - the same as for semaphore permits since 7.0.0.
-- **`ILeaseReleaser<T>`**, the common base of `ISemaphoreReleaser` and `IMutexReleaser`.
+- **`LeaseKeeper.hold(releaser, options, work)`** - extends the lease every `extendIntervalMs` to `ttlMs` while `work`
+  runs, releases it afterwards (also on errors).
+- **`signal` and `throwIfLost()`** in the work context - an `AbortSignal` aborted once an extension returns `false` or
+  fails, and a check to call before committing.
+- **`LeaseLostLockingError`** - the reason of that signal.
+- Works with every backend: it only needs `ILeaseReleaser` (`extend()` / `release()`).
 
 ## At a glance
 
 ```typescript
-const mutex = locks.mutex("nightly-report");
+const releaser = await locks.mutex("taxonomy").acquire({ ttlMs: 60_000 });
 
-const releaser = await mutex.tryAcquire({ ttlMs: 30 * 60_000 });
-if (!releaser) {
-  return; // already running
-}
-await queue.add("report", { lockToken: releaser.getToken() });
-
-// Worker
-const lock = locks.mutex("nightly-report").restoreReleaser(job.data.lockToken);
-try {
-  // ...
-} finally {
-  await lock.release();
-}
+await LeaseKeeper.hold(releaser, { ttlMs: 60_000, extendIntervalMs: 10_000 }, async ({ signal, throwIfLost }) => {
+  const result = await fetch(url, { signal });
+  throwIfLost();
+  await save(result);
+});
 ```
 
-Full details and the migration checklist for backend authors: [CHANGELOG.md](./CHANGELOG.md).
+The TTL now means "how long others wait if the holder dies", not "how long the work may take".
+
+Full details: [CHANGELOG.md](./CHANGELOG.md).

@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [9.0.0] - 2026-11-26
+
+Compared to **8.0.0**.
+
+### Breaking Changes
+
+- Minimum Node.js is now **17.2.0** (was 16.4.0): `LeaseKeeper` passes the error as the reason of `AbortController.abort(reason)`, which older versions ignore. No API changes - code and backends written for 8.x keep compiling and working.
+
+### Added
+
+- `LeaseKeeper.hold(releaser, { ttlMs, extendIntervalMs }, work)`: keeps a semaphore permit or a mutex lock alive while `work` runs by extending it every `extendIntervalMs`, then releases it - also when `work` throws. Works with any `ILeaseReleaser`, so with every backend.
+- The work gets `{ signal, throwIfLost }`: an `AbortSignal` aborted once an extension returns `false` or fails, and a check to call before committing results.
+- `LeaseLostLockingError` (a `LockingError`): the `reason` of that signal and the error of `throwIfLost()`; `cause` holds the failure when an extension threw.
+- Types `TLeaseKeeperOptions`, `TLeaseKeeperContext`, `TLeaseKeeperCallback<T>`.
+
+### Behavior
+
+- Extensions do not overlap: a tick is skipped while the previous one is pending; the timer stops once the lease is lost and does not keep the process alive by itself.
+- `extendIntervalMs` must be greater than `0` and smaller than `ttlMs`; `ttlMs` follows the usual TTL rules.
+
+### Migration checklist
+
+1. Run on Node.js 17.2.0 or newer.
+2. Backend packages: widen the `@apiratorjs/locking` range to include `^9.0.0`; nothing else changes.
+
 ## [8.0.0] - 2026-09-27
 
 Compared to **7.0.0**.

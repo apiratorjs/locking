@@ -5,7 +5,7 @@
 
 A lightweight Node.js library for concurrency management with three types of locking primitives: mutexes, semaphores, and read-write locks. Supports both local (in-process) and distributed (multi-process) synchronization, with Redis backend support via additional packages.
 
-> **Note:** Requires Node.js version **>=16.4.0**
+> **Note:** Requires Node.js version **>=17.2.0**
 >
 > Upgrading from 4.x? See [CHANGELOG](./CHANGELOG.md) and [5.0.0 release notes](./RELEASE_NOTES.md).
 
@@ -85,6 +85,11 @@ read-write lock support).
     - Answers `hasMutex` / `hasSemaphore` / `hasRWLock`, lists what exists and reports live state.
     - `cancelAll()` to drain waiters, `destroyAll()` for graceful shutdown.
     - Backend packages implement `IDistributedLockManager` themselves; several managers can run side by side.
+
+### Keeping a lease alive
+
+- **LeaseKeeper** — holds a semaphore permit or a mutex lock with a TTL while work of unknown length runs: extends it
+  on a timer, reports a lost lease through an `AbortSignal` and releases it at the end. Works with any backend.
 
 ### General
 
@@ -198,6 +203,65 @@ try {
 >
 > An expiring permit does not keep the process alive by itself, unless somebody is queued on the semaphore - then the
 > process stays up until the expiry hands them the permit.
+
+### Keeping a lease alive: `LeaseKeeper`
+
+A fixed TTL has to cover the longest possible run of the protected work. When the work calls the network (an API, a
+message broker), there is no such bound: the TTL runs out in the middle of the work and somebody else gets the lock
+while the first holder is still at it. `LeaseKeeper.hold()` takes an acquired releaser and extends it every
+`extendIntervalMs` while the work runs, so the lease lives exactly as long as its holder. The TTL is then only how long
+others wait once the holder is gone (crashed, killed): the timer dies with the process and the lease expires.
+
+```typescript
+import { LeaseKeeper } from "@apiratorjs/locking";
+
+const mutex = locks.mutex("taxonomy");
+const releaser = await mutex.acquire({ ttlMs: 60_000 });
+
+await LeaseKeeper.hold(releaser, { ttlMs: 60_000, extendIntervalMs: 10_000 }, async ({ signal, throwIfLost }) => {
+  const embeddings = await fetch(url, { signal }); // stops if the lease is lost
+  // ...
+  throwIfLost(); // do not commit without the lock
+  await saveChanges(embeddings);
+});
+```
+
+Acquiring stays with the caller, so it works with `acquire()`, `tryAcquire()` and a releaser restored from a token:
+
+```typescript
+const releaser = await mutex.tryAcquire({ ttlMs: 60_000 });
+if (!releaser) {
+  return; // another instance is already running
+}
+
+await LeaseKeeper.hold(releaser, { ttlMs: 60_000, extendIntervalMs: 10_000 }, async ({ signal }) => {
+  while (!signal.aborted && (await sendNextBatch())) {}
+});
+```
+
+| Option | Type | Meaning |
+|--------|------|---------|
+| `ttlMs` | `number` | TTL set on every extension: how long others wait for the lease once its holder is gone. |
+| `extendIntervalMs` | `number` | How often the lease is extended. Must be greater than `0` and smaller than `ttlMs`; keep it well below, so one failed or slow extension does not let the lease expire. |
+
+The work gets a context:
+
+- `signal` — an `AbortSignal` aborted as soon as an extension returns `false` (the lease expired or was released
+  elsewhere) or fails. Its `reason` is a `LeaseLostLockingError`, with the failure as `cause` when the extension threw.
+  Pass it on to anything that accepts a signal.
+- `throwIfLost()` — throws `LeaseLostLockingError` when the lease is known to be lost. Call it right before committing
+  the results.
+
+Behavior:
+
+- The lease is released when the work finishes or throws; the error of the work is rethrown.
+- The work is not interrupted: it decides itself what a lost lease means (stop a loop, refuse to write).
+- Extensions never overlap: a tick is skipped while the previous extension is still pending. After the lease is lost
+  the timer stops.
+- The timer does not keep the process alive by itself.
+- The signal reflects what the holder has observed: right after the lease expired, and before the next extension
+  notices it, `signal.aborted` is still `false`. When the backend is unreachable, an extension in flight settles only
+  when its client gives up.
 
 ### Local Primitives
 
@@ -436,7 +500,8 @@ import {
   TimeoutLockingError,
   CancelledLockingError,
   LockNotFoundError,
-  LockConfigMismatchError
+  LockConfigMismatchError,
+  LeaseLostLockingError
 } from "@apiratorjs/locking";
 ```
 
@@ -449,6 +514,7 @@ import {
 | `CancelledLockingError` | Lock acquisition was cancelled | When `cancel()` / `cancelAll()` or `destroy()` is called |
 | `LockNotFoundError` | Lock no longer exists | When accessing a destroyed distributed lock |
 | `LockConfigMismatchError` | A lock with this name already exists with different settings | When a distributed lock is constructed with a `maxCount` / `maxReaders` that conflicts with the existing lock of the same name |
+| `LeaseLostLockingError` | A lease kept by `LeaseKeeper` was lost | As the `reason` of the `LeaseKeeper` signal and from `throwIfLost()`, once an extension returned `false` or failed |
 
 #### Example Usage
 
